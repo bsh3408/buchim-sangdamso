@@ -40,19 +40,45 @@
       for (const dateEntry of data.dates) {
         const block = document.createElement('div');
         block.className = 'date-block cb-wrap';
-        block.innerHTML = `<div class="cb-title">${dateEntry.date}</div><div class="cb-grid" id="grid-${dateEntry.date_id}"></div>`;
+        block.innerHTML = `<div class="cb-title">${dateEntry.date}</div>`;
         container.appendChild(block);
 
-        const grid = block.querySelector('.cb-grid');
-        createSlotGrid(grid, dateEntry.slots, {
-          onEmptyClick: (slot) => {
-            window.dispatchEvent(new CustomEvent('buchim:parent-slot-clicked', {
-              detail: { ...slot, date: dateEntry.date },
-            }));
-          },
-          onFilledClick: () => {},
-        });
+        for (const group of groupByPeriod(dateEntry.slots)) {
+          if (group.period) {
+            const label = document.createElement('div');
+            label.textContent = `${group.period}교시 (${group.period_range})`;
+            label.style.cssText = 'color:#cfe0d3; font-size:12px; margin:10px 0 6px;';
+            block.appendChild(label);
+          }
+          const grid = document.createElement('div');
+          grid.className = 'cb-grid';
+          block.appendChild(grid);
+          createSlotGrid(grid, group.slots, {
+            onEmptyClick: (slot) => {
+              window.dispatchEvent(new CustomEvent('buchim:parent-slot-clicked', {
+                detail: { ...slot, date: dateEntry.date },
+              }));
+            },
+            onFilledClick: () => {},
+          });
+        }
       }
+    }
+
+    // slots를 교시 단위로 묶는다("직접 설정"으로 만든 슬롯은 period가 없어 한 묶음이 된다).
+    function groupByPeriod(slots) {
+      const groups = [];
+      const byKey = new Map();
+      for (const slot of slots) {
+        const key = slot.period ?? 'custom';
+        if (!byKey.has(key)) {
+          const group = { period: slot.period, period_range: slot.period_range, slots: [] };
+          byKey.set(key, group);
+          groups.push(group);
+        }
+        byKey.get(key).slots.push(slot);
+      }
+      return groups;
     }
 
     if (!parentCode) { location.href = './enter.html'; }
