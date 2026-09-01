@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>붙임상담소 — 선생님</title>
+  <style>
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      background:#233d2e; font-family:"Pretendard","Noto Sans KR",-apple-system,sans-serif; }
+    .card { background:#fffdf7; border-radius:16px; padding:32px; width:min(90vw,380px); }
+    h1 { font-size:18px; color:#233d2e; margin:0 0 8px; }
+    .hint { color:#a3502f; font-size:13px; background:#f0d6c8; padding:10px 12px; border-radius:8px; margin-bottom:20px; }
+    label { display:block; font-size:13px; color:#555; margin-bottom:6px; }
+    input { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:8px; margin-bottom:16px; font-size:14px; }
+    button { width:100%; padding:14px; border:0; border-radius:10px; background:#233d2e; color:#fff; font-weight:700; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:default; }
+    .error { color:#c1291e; font-size:13px; margin-top:8px; min-height:18px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>선생님 이름과 코드를 입력해주세요</h1>
+    <div class="hint">⚠️ 이 코드로 나중에 다시 들어와 일정을 고칠 수 있어요. 꼭 기억해두세요!</div>
+    <form id="setupForm">
+      <label for="name">이름</label>
+      <input id="name" required maxlength="20" placeholder="예: 김민준" />
+      <label for="code">코드 (4자 이상)</label>
+      <input id="code" required minlength="4" maxlength="30" placeholder="나만 아는 코드" />
+      <button type="submit" id="submitBtn">시작하기</button>
+      <div class="error" id="error"></div>
+    </form>
+  </div>
+  <script type="module">
+    import { db } from '../shared/db.js';
+
+    const form = document.getElementById('setupForm');
+    const errorEl = document.getElementById('error');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.textContent = '';
+      submitBtn.disabled = true;
+      const name = document.getElementById('name').value.trim();
+      const code = document.getElementById('code').value;
+      try {
+        const pageId = await db.getOrCreateTeacher(name, code);
+        sessionStorage.setItem('buchim_admin_code', code);
+        location.href = `./dashboard.html?page=${encodeURIComponent(pageId)}&code=${encodeURIComponent(code)}`;
+      } catch (err) {
+        errorEl.textContent = err.message;
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
