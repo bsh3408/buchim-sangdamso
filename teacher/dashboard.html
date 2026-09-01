@@ -92,5 +92,104 @@
 
     loadSchedule().catch(err => alert(err.message));
   </script>
+
+  <script type="module">
+    import { buildPresetSlots, buildCustomSlots } from '../shared/timetable-presets.js';
+    import { createSlotGrid } from '../shared/chalkboard.js';
+    import { db } from '../shared/db.js';
+
+    const editor = document.getElementById('dateEditor');
+
+    function renderEditor(dateStr) {
+      const state = window.buchimState;
+      const entry = state.dates.get(dateStr);
+      editor.innerHTML = `
+        <div class="cb-wrap">
+          <div class="cb-title">${dateStr} 상담 시간표</div>
+          <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+            <select id="presetSelect">
+              <option value="middle">중학교형 (09:00 시작, 45분 수업)</option>
+              <option value="high">고등학교형 (09:00 시작, 50분 수업)</option>
+              <option value="custom">직접 설정</option>
+            </select>
+            <span id="customRange" style="display:none;">
+              시작 <input type="time" id="customStart" value="09:00" />
+              종료 <input type="time" id="customEnd" value="16:00" />
+            </span>
+            상담시간(분) <input type="number" id="consultMinutes" min="5" max="120" value="${entry.duration_minutes || 20}" style="width:60px;" />
+            <button id="generateBtn">시간표 만들기</button>
+          </div>
+          <div id="slotGrid" class="cb-grid"></div>
+          <button id="saveDateBtn" style="margin-top:16px; padding:10px 18px; border-radius:8px; border:0; background:#233d2e; color:#fff; font-weight:700; cursor:pointer;">이 날짜 저장</button>
+        </div>
+      `;
+
+      document.getElementById('presetSelect').value = entry.preset || 'middle';
+      document.getElementById('customRange').style.display = entry.preset === 'custom' ? 'inline' : 'none';
+
+      document.getElementById('presetSelect').addEventListener('change', (e) => {
+        document.getElementById('customRange').style.display = e.target.value === 'custom' ? 'inline' : 'none';
+      });
+
+      document.getElementById('generateBtn').addEventListener('click', () => {
+        const preset = document.getElementById('presetSelect').value;
+        const consultMinutes = Number(document.getElementById('consultMinutes').value) || 20;
+        let slots;
+        if (preset === 'custom') {
+          const startTime = document.getElementById('customStart').value;
+          const endTime = document.getElementById('customEnd').value;
+          slots = buildCustomSlots({ startTime, endTime, consultMinutes });
+        } else {
+          slots = buildPresetSlots({ preset, consultMinutes });
+        }
+        entry.preset = preset;
+        entry.duration_minutes = consultMinutes;
+        entry.slots = slots.map(s => ({ ...s, slot_id: entry.slots.find(old => old.start_time === s.start_time)?.slot_id }));
+        renderGrid(dateStr);
+      });
+
+      renderGrid(dateStr);
+
+      document.getElementById('saveDateBtn').addEventListener('click', async () => {
+        try {
+          await db.saveDateSlots(
+            state.pageId, state.adminCode, dateStr,
+            entry.preset, entry.duration_minutes,
+            entry.slots.map(({ start_time, mode, is_open }) => ({ start_time, mode, is_open }))
+          );
+          alert('저장했어요.');
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
+
+    function renderGrid(dateStr) {
+      const state = window.buchimState;
+      const entry = state.dates.get(dateStr);
+      const grid = document.getElementById('slotGrid');
+      createSlotGrid(grid, entry.slots.map(s => ({ ...s, occupied: Boolean(s.booking) })), {
+        onEmptyClick: (slot) => {
+          slot.is_open = !slot.is_open;
+          renderGrid(dateStr);
+        },
+        onFilledClick: (slot) => {
+          window.dispatchEvent(new CustomEvent('buchim:slot-clicked', { detail: { dateStr, slot } }));
+        },
+      });
+      // 예약이 없는 열린 칸은 클릭으로 모드를 고르도록 별도 표시(테두리 색)한다
+      [...grid.children].forEach((el, i) => {
+        const slot = entry.slots[i];
+        if (slot.is_open && !slot.booking) {
+          el.style.borderColor = '#4fa27a';
+          el.addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('buchim:slot-clicked', { detail: { dateStr, slot } }));
+          }, { once: true });
+        }
+      });
+    }
+
+    window.addEventListener('buchim:date-selected', (e) => renderEditor(e.detail));
+  </script>
 </body>
 </html>
