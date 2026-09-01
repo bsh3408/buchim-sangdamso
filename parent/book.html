@@ -25,7 +25,6 @@
 
     const params = new URLSearchParams(location.search);
     const parentCode = params.get('code');
-    if (!parentCode) location.href = './enter.html';
 
     async function load() {
       const data = await db.getPublicSchedule(parentCode);
@@ -56,21 +55,18 @@
       }
     }
 
-    window.buchimParentCode = parentCode;
-    load().catch(err => alert(err.message));
+    if (!parentCode) { location.href = './enter.html'; }
+    else {
+      window.buchimParentCode = parentCode;
+      load().catch(err => alert(err.message));
+    }
   </script>
   <script type="module">
     import { db } from '../shared/db.js';
     import { stickPostit } from '../shared/chalkboard.js';
+    import { escapeHtml } from '../shared/escape.js';
 
     const TOPICS = ['진로', '교우관계', '학업', '생활지도', '기타'];
-
-    // 학생 이름 등은 학부모가 직접 입력하는 값이라, innerHTML에 그대로 넣으면 안 된다.
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-      }[c]));
-    }
 
     window.addEventListener('buchim:parent-slot-clicked', (e) => {
       const slot = e.detail;

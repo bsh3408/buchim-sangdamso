@@ -17,17 +17,11 @@
   <div class="card" id="card">불러오는 중...</div>
   <script type="module">
     import { db } from '../shared/db.js';
+    import { escapeHtml } from '../shared/escape.js';
 
     const params = new URLSearchParams(location.search);
     const token = params.get('token');
     const card = document.getElementById('card');
-
-    // 학생 이름 등은 학부모가 직접 입력한 값이라, innerHTML에 그대로 넣으면 안 된다.
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-      }[c]));
-    }
 
     async function load() {
       if (!token) { card.innerHTML = '<p class="error">잘못된 링크예요.</p>'; return; }
