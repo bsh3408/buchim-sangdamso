@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>붙임상담소 — 상담 신청</title>
+  <link rel="stylesheet" href="../shared/chalkboard.css" />
+  <style>
+    body { margin:0; background:#f4f1e8; font-family:"Pretendard","Noto Sans KR",-apple-system,sans-serif; }
+    .wrap { max-width:720px; margin:0 auto; padding:24px 16px 60px; }
+    h1 { font-size:20px; color:#233d2e; }
+    .date-block { margin-bottom:24px; }
+    .date-block h2 { font-size:14px; color:#233d2e; margin:0 0 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="pageTitle">상담 신청</h1>
+    <div id="dateBlocks"></div>
+    <div id="formArea"></div>
+  </div>
+  <script type="module">
+    import { db } from '../shared/db.js';
+    import { createSlotGrid } from '../shared/chalkboard.js';
+
+    const params = new URLSearchParams(location.search);
+    const parentCode = params.get('code');
+    if (!parentCode) location.href = './enter.html';
+
+    async function load() {
+      const data = await db.getPublicSchedule(parentCode);
+      document.getElementById('pageTitle').textContent = `${data.teacher_name} 선생님과의 상담 신청`;
+      const container = document.getElementById('dateBlocks');
+      container.innerHTML = '';
+
+      if (data.dates.length === 0) {
+        container.innerHTML = '<p>현재 열려있는 상담 가능 시간이 없어요.</p>';
+        return;
+      }
+
+      for (const dateEntry of data.dates) {
+        const block = document.createElement('div');
+        block.className = 'date-block cb-wrap';
+        block.innerHTML = `<div class="cb-title">${dateEntry.date}</div><div class="cb-grid" id="grid-${dateEntry.date_id}"></div>`;
+        container.appendChild(block);
+
+        const grid = block.querySelector('.cb-grid');
+        createSlotGrid(grid, dateEntry.slots, {
+          onEmptyClick: (slot) => {
+            window.dispatchEvent(new CustomEvent('buchim:parent-slot-clicked', {
+              detail: { ...slot, date: dateEntry.date },
+            }));
+          },
+          onFilledClick: () => {},
+        });
+      }
+    }
+
+    window.buchimParentCode = parentCode;
+    load().catch(err => alert(err.message));
+  </script>
+</body>
+</html>
