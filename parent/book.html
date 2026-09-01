@@ -65,6 +65,13 @@
 
     const TOPICS = ['진로', '교우관계', '학업', '생활지도', '기타'];
 
+    // 학생 이름 등은 학부모가 직접 입력하는 값이라, innerHTML에 그대로 넣으면 안 된다.
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[c]));
+    }
+
     window.addEventListener('buchim:parent-slot-clicked', (e) => {
       const slot = e.detail;
       const formArea = document.getElementById('formArea');
@@ -108,13 +115,13 @@
             topics, mode
           );
           const slotEl = document.querySelector(`.cb-slot[data-slot-id="${slot.slot_id}"]`);
-          if (slotEl) stickPostit(slotEl, `${fd.get('studentName')}<br>학부모`);
+          if (slotEl) stickPostit(slotEl, `${escapeHtml(fd.get('studentName'))}<br>학부모`);
 
           const cancelLink = `${location.origin}${location.pathname.replace('book.html', 'cancel.html')}?token=${cancelToken}`;
           formArea.innerHTML = `
             <div class="cb-wrap" style="background:#fffdf7; color:#233d2e;">
               <h2 style="margin-top:0;">신청이 완료됐어요 🎉</h2>
-              <p>${slot.date} ${slot.start_time}, ${fd.get('studentName')} 학생 상담이 접수됐어요.</p>
+              <p>${slot.date} ${slot.start_time}, ${escapeHtml(fd.get('studentName'))} 학생 상담이 접수됐어요.</p>
               <p>취소하려면 아래 링크로 들어오세요. <strong>이 화면을 캡처해두세요.</strong></p>
               <p><a href="${cancelLink}">${cancelLink}</a></p>
             </div>
