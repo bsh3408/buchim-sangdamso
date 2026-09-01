@@ -27,6 +27,10 @@
     </div>
     <ul class="date-list" id="dateList"></ul>
     <div id="dateEditor"></div>
+    <div id="publishArea" style="margin-top:32px; padding-top:24px; border-top:1px solid #ddd;">
+      <button id="publishBtn" style="padding:12px 20px; border-radius:8px; border:0; background:#c15b1e; color:#fff; font-weight:700; cursor:pointer;">설정 끝, 학부모 링크 만들기</button>
+      <div id="publishResult" style="margin-top:12px; font-size:14px;"></div>
+    </div>
   </div>
 
   <script type="module">
@@ -197,6 +201,44 @@
     }
 
     window.addEventListener('buchim:date-selected', (e) => renderEditor(e.detail));
+  </script>
+
+  <script type="module">
+    import { db } from '../shared/db.js';
+
+    window.addEventListener('buchim:slot-clicked', (e) => {
+      const { slot } = e.detail;
+      if (slot.booking) {
+        alert('이미 신청이 들어온 시간이라 여기서는 방식을 바꿀 수 없어요.');
+        return;
+      }
+      const choice = prompt(
+        '상담 방식을 입력해주세요 (phone / in_person / both)\n이 시간을 다시 끄려면 close 라고 입력하세요',
+        slot.mode || 'both'
+      );
+      if (choice === 'close') {
+        slot.is_open = false;
+        window.dispatchEvent(new CustomEvent('buchim:date-selected', { detail: e.detail.dateStr }));
+      } else if (choice && ['phone', 'in_person', 'both'].includes(choice)) {
+        slot.mode = choice;
+        window.dispatchEvent(new CustomEvent('buchim:date-selected', { detail: e.detail.dateStr }));
+      }
+    });
+
+    document.getElementById('publishBtn').addEventListener('click', async () => {
+      const state = window.buchimState;
+      try {
+        const code = await db.publishPage(state.pageId, state.adminCode);
+        state.parentCode = code;
+        const link = `${location.origin}${location.pathname.replace('/teacher/dashboard.html', '/parent/enter.html')}?code=${code}`;
+        document.getElementById('publishResult').innerHTML = `
+          <p>학부모 발송용 코드: <strong>${code}</strong></p>
+          <p>공유 링크: <a href="${link}" target="_blank">${link}</a></p>
+        `;
+      } catch (err) {
+        alert(err.message);
+      }
+    });
   </script>
 </body>
 </html>
