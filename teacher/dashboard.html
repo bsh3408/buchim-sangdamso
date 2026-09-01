@@ -52,6 +52,7 @@
       location.href = './setup.html';
     } else {
       if (state.pageId) {
+        sessionStorage.setItem('buchim_admin_code', state.adminCode);
         history.replaceState(null, '', `./dashboard.html?page=${encodeURIComponent(state.pageId)}`);
       }
       loadSchedule().catch(err => alert(err.message));
