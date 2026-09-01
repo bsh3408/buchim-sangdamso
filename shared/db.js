@@ -20,8 +20,11 @@ async function rpc(fnName, args) {
 }
 
 export const db = {
-  getOrCreateTeacher: (name, adminCode) =>
-    rpc('get_or_create_teacher', { p_name: name, p_admin_code: adminCode }),
+  getOrCreateTeacher: (name, adminCode, school, grade, teacherClass) =>
+    rpc('get_or_create_teacher', {
+      p_name: name, p_admin_code: adminCode,
+      p_school: school, p_grade: grade, p_class: teacherClass,
+    }),
   getTeacherSchedule: (pageId, adminCode) =>
     rpc('get_teacher_schedule', { p_page_id: pageId, p_admin_code: adminCode }),
   saveDateSlots: (pageId, adminCode, date, preset, durationMinutes, slots) =>
