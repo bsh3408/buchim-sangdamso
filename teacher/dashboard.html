@@ -172,22 +172,26 @@
       // 복사본만 고치고 entry.slots는 그대로 남아, 클릭이 저장되지 않는다).
       const gridSlots = entry.slots.map(s => { s.occupied = Boolean(s.booking); return s; });
       createSlotGrid(grid, gridSlots, {
+        // 닫힌 칸을 클릭하면 연다. 이미 열린(예약 없는) 칸을 클릭하면 상담방식 팝업을 띄운다
+        // (Task 10). 리스너를 두 개 겹쳐 달면 "열기"와 "팝업 띄우기"가 한 클릭에 동시에
+        // 발생해 방금 연 칸이 그대로 닫혀버리는 문제가 생기므로, 분기를 하나로 합친다.
         onEmptyClick: (slot) => {
-          slot.is_open = !slot.is_open;
-          renderGrid(dateStr);
+          if (slot.is_open) {
+            window.dispatchEvent(new CustomEvent('buchim:slot-clicked', { detail: { dateStr, slot } }));
+          } else {
+            slot.is_open = true;
+            renderGrid(dateStr);
+          }
         },
         onFilledClick: (slot) => {
           window.dispatchEvent(new CustomEvent('buchim:slot-clicked', { detail: { dateStr, slot } }));
         },
       });
-      // 예약이 없는 열린 칸은 클릭으로 모드를 고르도록 별도 표시(테두리 색)한다
+      // 예약이 없는 열린 칸은 테두리 색으로 구분해 보여준다(클릭 리스너는 위에서 이미 처리됨)
       [...grid.children].forEach((el, i) => {
         const slot = entry.slots[i];
         if (slot.is_open && !slot.booking) {
           el.style.borderColor = '#4fa27a';
-          el.addEventListener('click', () => {
-            window.dispatchEvent(new CustomEvent('buchim:slot-clicked', { detail: { dateStr, slot } }));
-          }, { once: true });
         }
       });
     }
