@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>붙임상담소 — 상담 일정 관리</title>
+  <link rel="stylesheet" href="../shared/chalkboard.css" />
+  <style>
+    body { margin:0; background:#f4f1e8; font-family:"Pretendard","Noto Sans KR",-apple-system,sans-serif; }
+    .wrap { max-width:720px; margin:0 auto; padding:24px 16px 60px; }
+    h1 { font-size:20px; color:#233d2e; }
+    .picker { display:flex; gap:8px; align-items:center; margin:16px 0; }
+    .picker input[type=date] { padding:10px; border-radius:8px; border:1px solid #ddd; }
+    .picker button { padding:10px 16px; border-radius:8px; border:0; background:#233d2e; color:#fff; font-weight:700; cursor:pointer; }
+    .date-list { list-style:none; padding:0; display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+    .date-list li { padding:8px 14px; border-radius:999px; background:#fff; border:1px solid #ddd; cursor:pointer; font-size:13px; }
+    .date-list li.active { background:#233d2e; color:#fff; border-color:#233d2e; }
+    #dateEditor { margin-top:24px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="teacherTitle">상담 일정 관리</h1>
+    <div class="picker">
+      <input type="date" id="newDateInput" />
+      <button id="addDateBtn">이 날짜 추가</button>
+    </div>
+    <ul class="date-list" id="dateList"></ul>
+    <div id="dateEditor"></div>
+  </div>
+
+  <script type="module">
+    import { db } from '../shared/db.js';
+
+    const params = new URLSearchParams(location.search);
+    const state = {
+      pageId: params.get('page'),
+      adminCode: params.get('code') || sessionStorage.getItem('buchim_admin_code') || '',
+      teacherName: '',
+      parentCode: null,
+      published: false,
+      dates: new Map(),      // dateStr -> { date_id, date, preset, duration_minutes, slots }
+      selectedDate: null,
+    };
+
+    if (!state.pageId || !state.adminCode) {
+      alert('선생님 등록 화면에서 다시 시작해주세요.');
+      location.href = './setup.html';
+    }
+
+    async function loadSchedule() {
+      const data = await db.getTeacherSchedule(state.pageId, state.adminCode);
+      state.teacherName = data.teacher_name;
+      state.parentCode = data.parent_code;
+      state.published = data.published;
+      state.dates = new Map(data.dates.map(d => [d.date, d]));
+      document.getElementById('teacherTitle').textContent = `${state.teacherName} 선생님의 상담 일정`;
+      renderDateList();
+    }
+
+    function renderDateList() {
+      const list = document.getElementById('dateList');
+      list.innerHTML = '';
+      const sorted = [...state.dates.keys()].sort();
+      for (const dateStr of sorted) {
+        const li = document.createElement('li');
+        li.textContent = dateStr;
+        if (dateStr === state.selectedDate) li.classList.add('active');
+        li.addEventListener('click', () => selectDate(dateStr));
+        list.appendChild(li);
+      }
+    }
+
+    function selectDate(dateStr) {
+      state.selectedDate = dateStr;
+      renderDateList();
+      window.dispatchEvent(new CustomEvent('buchim:date-selected', { detail: dateStr }));
+    }
+
+    document.getElementById('addDateBtn').addEventListener('click', () => {
+      const value = document.getElementById('newDateInput').value;
+      if (!value) return;
+      if (!state.dates.has(value)) {
+        state.dates.set(value, { date: value, preset: 'middle', duration_minutes: 20, slots: [] });
+      }
+      selectDate(value);
+    });
+
+    window.buchimState = state;
+    window.buchimRenderDateList = renderDateList;
+    window.buchimSelectDate = selectDate;
+
+    loadSchedule().catch(err => alert(err.message));
+  </script>
+</body>
+</html>
