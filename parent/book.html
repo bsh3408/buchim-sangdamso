@@ -59,5 +59,76 @@
     window.buchimParentCode = parentCode;
     load().catch(err => alert(err.message));
   </script>
+  <script type="module">
+    import { db } from '../shared/db.js';
+    import { stickPostit } from '../shared/chalkboard.js';
+
+    const TOPICS = ['진로', '교우관계', '학업', '생활지도', '기타'];
+
+    window.addEventListener('buchim:parent-slot-clicked', (e) => {
+      const slot = e.detail;
+      const formArea = document.getElementById('formArea');
+      const showModeChoice = slot.mode === 'both';
+
+      formArea.innerHTML = `
+        <div class="cb-wrap" style="background:#fffdf7; color:#233d2e;">
+          <h2 style="margin-top:0;">${slot.date} ${slot.start_time} 상담 신청</h2>
+          <form id="bookForm">
+            <label>학생 이름 <input name="studentName" required /></label><br/><br/>
+            <label>반 <input name="className" required placeholder="예: 2학년 3반" /></label><br/><br/>
+            <label>학부모 연락처 <input name="parentPhone" required placeholder="010-0000-0000" /></label><br/><br/>
+            <fieldset>
+              <legend>상담 희망 내용 (복수 선택 가능)</legend>
+              ${TOPICS.map(t => `<label><input type="checkbox" name="topics" value="${t}" /> ${t}</label>`).join(' ')}
+            </fieldset>
+            ${showModeChoice ? `
+              <label>상담 방식
+                <select name="mode">
+                  <option value="phone">전화</option>
+                  <option value="in_person">대면</option>
+                </select>
+              </label>
+            ` : `<input type="hidden" name="mode" value="${slot.mode}" />`}
+            <br/><br/>
+            <button type="submit">신청하기</button>
+            <div class="error" id="bookError" style="color:#c1291e;"></div>
+          </form>
+        </div>
+      `;
+
+      document.getElementById('bookForm').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const fd = new FormData(ev.target);
+        const topics = fd.getAll('topics');
+        const mode = fd.get('mode');
+        try {
+          const cancelToken = await db.bookSlot(
+            window.buchimParentCode, slot.slot_id,
+            fd.get('studentName'), fd.get('className'), fd.get('parentPhone'),
+            topics, mode
+          );
+          const slotEl = document.querySelector(`.cb-slot[data-slot-id="${slot.slot_id}"]`);
+          if (slotEl) stickPostit(slotEl, `${fd.get('studentName')}<br>학부모`);
+
+          const cancelLink = `${location.origin}${location.pathname.replace('book.html', 'cancel.html')}?token=${cancelToken}`;
+          formArea.innerHTML = `
+            <div class="cb-wrap" style="background:#fffdf7; color:#233d2e;">
+              <h2 style="margin-top:0;">신청이 완료됐어요 🎉</h2>
+              <p>${slot.date} ${slot.start_time}, ${fd.get('studentName')} 학생 상담이 접수됐어요.</p>
+              <p>취소하려면 아래 링크로 들어오세요. <strong>이 화면을 캡처해두세요.</strong></p>
+              <p><a href="${cancelLink}">${cancelLink}</a></p>
+            </div>
+          `;
+        } catch (err) {
+          const errEl = document.getElementById('bookError');
+          if (err.message === 'ALREADY_BOOKED') {
+            errEl.textContent = '방금 다른 분이 신청했어요. 새로고침해서 다른 시간을 골라주세요.';
+          } else {
+            errEl.textContent = err.message;
+          }
+        }
+      });
+    });
+  </script>
 </body>
 </html>
