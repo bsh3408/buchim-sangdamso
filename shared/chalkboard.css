@@ -287,7 +287,7 @@ textarea { resize:vertical; min-height:90px; }
 .cal-day { display:flex; align-items:center; justify-content:center; }
 .cal-day--empty { visibility:hidden; }
 .cal-day button {
-  width:36px; height:36px; border-radius:50%; border:1.5px solid transparent; background:transparent;
+  position:relative; width:36px; height:36px; border-radius:50%; border:1.5px solid transparent; background:transparent;
   font-size:13px; font-family:inherit; color:var(--text); cursor:pointer;
 }
 .cal-day button.sun { color:var(--danger); }
@@ -296,11 +296,18 @@ textarea { resize:vertical; min-height:90px; }
 .cal-day button:hover:not(:disabled) { background:var(--disabled); }
 .cal-day button.cal-day--today { border-color:var(--border-strong); }
 .cal-day button.cal-day--in-range { background:var(--primary-soft); border-radius:0; }
+.cal-day button.cal-day--configured::after {
+  content:""; position:absolute; left:50%; bottom:3px; transform:translateX(-50%);
+  width:5px; height:5px; border-radius:50%; background:var(--success);
+}
 .cal-day button.cal-day--start,
 .cal-day button.cal-day--end {
   background:var(--primary); color:#fff !important; font-weight:700;
 }
+.cal-day button.cal-day--start.cal-day--configured::after,
+.cal-day button.cal-day--end.cal-day--configured::after { background:#fff; }
 .cal-hint { text-align:center; font-size:12px; color:var(--text-muted); margin-top:10px; }
+.cal-legend-dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--success); margin-right:4px; }
 
 /* ---- 드래그로 시간 조정하는 타임라인 ---- */
 .tl-ruler {

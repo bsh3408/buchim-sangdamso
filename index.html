@@ -660,7 +660,7 @@ function renderAvailabilityEditor() {
       <div id="ta-editor"></div>
     </div>
   `;
-  renderCalendar($('#rangeCalendar'), { onRangeConfirmed: createDateRange });
+  renderCalendar($('#rangeCalendar'), { onRangeConfirmed: createDateRange, markedDates: [...t.dates.keys()] });
 
   if (sortedDates.length > 0) {
     renderTeacherDateScroll();

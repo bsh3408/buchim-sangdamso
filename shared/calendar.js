@@ -8,11 +8,17 @@ function fmt(y, m, d) {
  * onRangeConfirmed(startStr, endStr)가 호출된다. 같은 날을 두 번 누르면 하루짜리
  * 기간으로 확정된다. 이미 확정된 상태에서 다시 누르면 새 시작일로 다시 시작한다.
  */
-export function renderCalendar(container, { onRangeConfirmed } = {}) {
+export function renderCalendar(container, { onRangeConfirmed, markedDates } = {}) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const marked = new Set(markedDates || []);
+  const sortedMarked = [...marked].sort();
   let viewYear = today.getFullYear();
   let viewMonth = today.getMonth();
+  if (sortedMarked.length > 0) {
+    const [fy, fm] = sortedMarked[0].split('-').map(Number);
+    viewYear = fy; viewMonth = fm - 1;
+  }
   let start = null; // 'YYYY-MM-DD'
   let end = null;
   let confirmed = false;
@@ -41,6 +47,7 @@ export function renderCalendar(container, { onRangeConfirmed } = {}) {
       if (dow === 0) cls += ' sun'; else if (dow === 6) cls += ' sat';
       if (isPast) cls += ' cal-day--past';
       if (isToday) cls += ' cal-day--today';
+      if (marked.has(dateStr)) cls += ' cal-day--configured';
       if (start && dateStr === start) cls += ' cal-day--start';
       if (end && dateStr === end) cls += ' cal-day--end';
       if (start && end && dateStr > start && dateStr < end) cls += ' cal-day--in-range';
@@ -58,6 +65,7 @@ export function renderCalendar(container, { onRangeConfirmed } = {}) {
         <div class="cal-hint">${
           !start ? '시작일을 눌러주세요' : !end ? '종료일을 눌러주세요 (같은 날을 다시 누르면 하루만 선택돼요)' : `${start} ~ ${end}`
         }</div>
+        ${marked.size > 0 ? '<div class="cal-hint"><span class="cal-legend-dot"></span> 이미 시간표가 있는 날짜</div>' : ''}
       </div>
     `;
 
