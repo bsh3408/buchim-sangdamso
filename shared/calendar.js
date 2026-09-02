@@ -8,20 +8,23 @@ function fmt(y, m, d) {
  * onRangeConfirmed(startStr, endStr)가 호출된다. 같은 날을 두 번 누르면 하루짜리
  * 기간으로 확정된다. 이미 확정된 상태에서 다시 누르면 새 시작일로 다시 시작한다.
  */
-export function renderCalendar(container, { onRangeConfirmed, markedDates } = {}) {
+export function renderCalendar(container, { onRangeConfirmed, markedDates, initialStart, initialEnd } = {}) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const marked = new Set(markedDates || []);
   const sortedMarked = [...marked].sort();
   let viewYear = today.getFullYear();
   let viewMonth = today.getMonth();
-  if (sortedMarked.length > 0) {
+  if (initialStart) {
+    const [fy, fm] = initialStart.split('-').map(Number);
+    viewYear = fy; viewMonth = fm - 1;
+  } else if (sortedMarked.length > 0) {
     const [fy, fm] = sortedMarked[0].split('-').map(Number);
     viewYear = fy; viewMonth = fm - 1;
   }
-  let start = null; // 'YYYY-MM-DD'
-  let end = null;
-  let confirmed = false;
+  let start = initialStart || null; // 'YYYY-MM-DD'
+  let end = initialEnd || null;
+  let confirmed = Boolean(start && end);
 
   function draw() {
     const first = new Date(viewYear, viewMonth, 1);
@@ -37,21 +40,32 @@ export function renderCalendar(container, { onRangeConfirmed, markedDates } = {}
       `<div class="cal-dow ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${n}</div>`
     ).join('');
 
+    function rangeClassFor(dateStr) {
+      if (!start) return null;
+      if (!end) return dateStr === start ? 'single-pending' : null;
+      if (dateStr < start || dateStr > end) return null;
+      if (start === end) return 'single';
+      if (dateStr === start) return 'start';
+      if (dateStr === end) return 'end';
+      return 'middle';
+    }
+
     const cellsHtml = cells.map((d) => {
       if (d === null) return `<div class="cal-day cal-day--empty"></div>`;
       const dateStr = fmt(viewYear, viewMonth, d);
       const dow = new Date(viewYear, viewMonth, d).getDay();
       const isPast = dateStr < fmt(today.getFullYear(), today.getMonth(), today.getDate());
       const isToday = dateStr === fmt(today.getFullYear(), today.getMonth(), today.getDate());
+      const range = rangeClassFor(dateStr);
       let cls = 'cal-day';
       if (dow === 0) cls += ' sun'; else if (dow === 6) cls += ' sat';
       if (isPast) cls += ' cal-day--past';
       if (isToday) cls += ' cal-day--today';
       if (marked.has(dateStr)) cls += ' cal-day--configured';
-      if (start && dateStr === start) cls += ' cal-day--start';
-      if (end && dateStr === end) cls += ' cal-day--end';
-      if (start && end && dateStr > start && dateStr < end) cls += ' cal-day--in-range';
-      return `<div class="cal-day" data-date="${dateStr}"><button type="button" class="${cls}" ${isPast ? 'disabled' : ''} data-date="${dateStr}">${d}</button></div>`;
+      if (range) cls += ' cal-day--onbar';
+      const barVariant = range === 'single-pending' ? 'single' : range;
+      const bar = range ? `<div class="cal-range-bar cal-range-bar--${barVariant}"></div>` : '';
+      return `<div class="cal-day" data-date="${dateStr}">${bar}<button type="button" class="${cls}" ${isPast ? 'disabled' : ''} data-date="${dateStr}">${d}</button></div>`;
     }).join('');
 
     container.innerHTML = `

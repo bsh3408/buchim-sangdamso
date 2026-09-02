@@ -458,7 +458,7 @@ async function doCancelBooking(slot, slotEl, bg) {
  *****************************************************/
 let teacherState = {
   pageId: null, adminCode: null, teacherName: '', school: '', schoolLevel: '', grade: '', teacherClass: '',
-  parentCode: null, dates: new Map(), editingDate: null,
+  parentCode: null, dates: new Map(), editingDate: null, lastRangeStart: null, lastRangeEnd: null,
 };
 
 function startTeacher() {
@@ -660,7 +660,12 @@ function renderAvailabilityEditor() {
       <div id="ta-editor"></div>
     </div>
   `;
-  renderCalendar($('#rangeCalendar'), { onRangeConfirmed: createDateRange, markedDates: [...t.dates.keys()] });
+  renderCalendar($('#rangeCalendar'), {
+    onRangeConfirmed: createDateRange,
+    markedDates: [...t.dates.keys()],
+    initialStart: t.lastRangeStart,
+    initialEnd: t.lastRangeEnd,
+  });
 
   if (sortedDates.length > 0) {
     renderTeacherDateScroll();
@@ -678,6 +683,8 @@ function generateDefaultSlots(entry) {
 function createDateRange(startVal, endVal) {
   const days = weekdaysBetween(startVal, endVal);
   if (days.length === 0) return toast('그 사이에 평일이 없어요');
+  teacherState.lastRangeStart = startVal;
+  teacherState.lastRangeEnd = endVal;
   const defaultPreset = SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
   for (const d of days) {
     if (!teacherState.dates.has(d)) {

@@ -284,10 +284,10 @@ textarea { resize:vertical; min-height:90px; }
 .cal-dow { text-align:center; font-size:12px; color:var(--text-muted); padding:4px 0; }
 .cal-dow.sun { color:var(--danger); }
 .cal-dow.sat { color:#2b6cb0; }
-.cal-day { display:flex; align-items:center; justify-content:center; }
+.cal-day { position:relative; display:flex; align-items:center; justify-content:center; height:38px; }
 .cal-day--empty { visibility:hidden; }
 .cal-day button {
-  position:relative; width:36px; height:36px; border-radius:50%; border:1.5px solid transparent; background:transparent;
+  position:relative; z-index:1; width:36px; height:36px; border-radius:50%; border:1.5px solid transparent; background:transparent;
   font-size:13px; font-family:inherit; color:var(--text); cursor:pointer;
 }
 .cal-day button.sun { color:var(--danger); }
@@ -295,17 +295,19 @@ textarea { resize:vertical; min-height:90px; }
 .cal-day button:disabled { opacity:.3; cursor:not-allowed; }
 .cal-day button:hover:not(:disabled) { background:var(--disabled); }
 .cal-day button.cal-day--today { border-color:var(--border-strong); }
-.cal-day button.cal-day--in-range { background:var(--primary-soft); border-radius:0; }
+.cal-day button.cal-day--onbar { color:#fff !important; font-weight:700; }
 .cal-day button.cal-day--configured::after {
   content:""; position:absolute; left:50%; bottom:3px; transform:translateX(-50%);
   width:5px; height:5px; border-radius:50%; background:var(--success);
 }
-.cal-day button.cal-day--start,
-.cal-day button.cal-day--end {
-  background:var(--primary); color:#fff !important; font-weight:700;
-}
-.cal-day button.cal-day--start.cal-day--configured::after,
-.cal-day button.cal-day--end.cal-day--configured::after { background:#fff; }
+.cal-day button.cal-day--onbar.cal-day--configured::after { background:#fff; }
+
+/* 시작~종료 사이를 이어지는 둥근 막대로 표시(칸 사이 간격까지 넘어가서 끊김 없이 이어붙인다) */
+.cal-range-bar { position:absolute; top:2px; bottom:2px; z-index:0; }
+.cal-range-bar--start { left:2px; right:-4px; background:var(--primary); border-radius:999px 0 0 999px; }
+.cal-range-bar--end { left:-4px; right:2px; background:var(--primary); border-radius:0 999px 999px 0; }
+.cal-range-bar--middle { left:-4px; right:-4px; background:var(--primary-soft); border-radius:0; }
+.cal-range-bar--single { left:2px; right:2px; background:var(--primary); border-radius:999px; }
 .cal-hint { text-align:center; font-size:12px; color:var(--text-muted); margin-top:10px; }
 .cal-legend-dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--success); margin-right:4px; }
 
