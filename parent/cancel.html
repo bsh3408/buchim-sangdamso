@@ -9,7 +9,8 @@
       background:#233d2e; font-family:"Pretendard","Noto Sans KR",-apple-system,sans-serif; }
     .card { background:#fffdf7; border-radius:16px; padding:32px; width:min(90vw,380px); text-align:center; }
     h1 { font-size:18px; color:#233d2e; }
-    button { width:100%; padding:14px; border:0; border-radius:10px; background:#c1291e; color:#fff; font-weight:700; cursor:pointer; margin-top:16px; }
+    input { width:100%; box-sizing:border-box; padding:12px; border:1px solid #ddd; border-radius:8px; margin-top:16px; font-size:14px; text-align:center; }
+    button { width:100%; padding:14px; border:0; border-radius:10px; background:#c1291e; color:#fff; font-weight:700; cursor:pointer; margin-top:12px; }
     .error { color:#c1291e; font-size:13px; margin-top:10px; }
   </style>
 </head>
@@ -27,17 +28,23 @@
       if (!token) { card.innerHTML = '<p class="error">잘못된 링크예요.</p>'; return; }
       try {
         const booking = await db.getBookingByToken(token);
+        const periodText = booking.period ? ` (${booking.period}교시)` : '';
         card.innerHTML = `
           <h1>${escapeHtml(booking.teacher_name)} 선생님과의 상담</h1>
-          <p>${booking.date} ${booking.start_time}<br/>${escapeHtml(booking.student_name)} 학생 (${escapeHtml(booking.class_name)})</p>
+          <p>${booking.date}${periodText} ${booking.start_time}<br/>${escapeHtml(booking.student_number)}번 ${escapeHtml(booking.student_name)} 학생 (${escapeHtml(booking.class_name)})</p>
+          <input type="password" id="cancelPassword" placeholder="예약 비밀번호" />
           <button id="cancelBtn">이 신청 취소하기</button>
+          <div class="error" id="cancelError"></div>
         `;
         document.getElementById('cancelBtn').addEventListener('click', async () => {
+          const password = document.getElementById('cancelPassword').value;
+          const errEl = document.getElementById('cancelError');
+          if (!password) { errEl.textContent = '예약할 때 정한 비밀번호를 입력해주세요.'; return; }
           try {
-            await db.cancelBooking(token);
+            await db.cancelBooking(token, password);
             card.innerHTML = '<h1>취소됐어요</h1><p>다른 시간이 필요하면 다시 신청해주세요.</p>';
           } catch (err) {
-            card.innerHTML += `<p class="error">${err.message}</p>`;
+            errEl.textContent = err.message;
           }
         });
       } catch (err) {

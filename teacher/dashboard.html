@@ -267,7 +267,7 @@
         const slot = slots[i];
         if (slot.booking) {
           const postit = el.querySelector('.postit');
-          postit.innerHTML = `${escapeHtml(slot.booking.student_name)}<br>${escapeHtml(slot.booking.class_name)}`;
+          postit.innerHTML = `${escapeHtml(slot.booking.student_number)}번<br>${escapeHtml(slot.booking.student_name)}`;
         } else if (slot.is_open) {
           el.style.borderColor = '#4fa27a';
         }
@@ -316,19 +316,21 @@
           <thead>
             <tr style="text-align:left; border-bottom:1px solid #ddd;">
               <th style="padding:6px 4px;">시간</th><th style="padding:6px 4px;">학생</th>
-              <th style="padding:6px 4px;">반</th><th style="padding:6px 4px;">연락처</th>
+              <th style="padding:6px 4px;">학부모</th><th style="padding:6px 4px;">연락처</th>
               <th style="padding:6px 4px;">희망내용</th><th style="padding:6px 4px;">방식</th>
+              <th style="padding:6px 4px;">상담내용</th>
             </tr>
           </thead>
           <tbody>
             ${booked.map(s => `
               <tr style="border-bottom:1px solid #eee;">
                 <td style="padding:6px 4px;">${escapeHtml(s.start_time)}</td>
-                <td style="padding:6px 4px;">${escapeHtml(s.booking.student_name)}</td>
-                <td style="padding:6px 4px;">${escapeHtml(s.booking.class_name)}</td>
+                <td style="padding:6px 4px;">${escapeHtml(s.booking.student_number)}번 ${escapeHtml(s.booking.student_name)}</td>
+                <td style="padding:6px 4px;">${escapeHtml(s.booking.parent_name)}</td>
                 <td style="padding:6px 4px;">${escapeHtml(s.booking.parent_phone)}</td>
                 <td style="padding:6px 4px;">${escapeHtml((s.booking.topics || []).join(', '))}</td>
-                <td style="padding:6px 4px;">${s.booking.mode === 'phone' ? '전화' : '대면'}</td>
+                <td style="padding:6px 4px;">${s.booking.mode === 'phone' ? '전화' : '방문'}</td>
+                <td style="padding:6px 4px;">${escapeHtml(s.booking.notes || '')}</td>
               </tr>
             `).join('')}
           </tbody>
