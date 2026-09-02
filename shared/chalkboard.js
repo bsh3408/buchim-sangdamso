@@ -1,4 +1,6 @@
 // shared/chalkboard.js
+import { escapeHtml } from './escape.js';
+
 export function createSlotGrid(container, slots, handlers) {
   container.innerHTML = '';
   container.classList.add('cb-grid');
@@ -23,6 +25,9 @@ export function createSlotGrid(container, slots, handlers) {
 
     const filled = Boolean(slot.occupied);
     if (filled) {
+      if (slot.booking_ref?.student_number) {
+        postit.innerHTML = `${escapeHtml(slot.booking_ref.student_number)}번`;
+      }
       postit.classList.add('stuck');
       postit.style.opacity = '1';
       postit.style.pointerEvents = 'auto';

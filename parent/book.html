@@ -102,10 +102,14 @@
           createSlotGrid(grid, group.slots, {
             onEmptyClick: (slot) => {
               window.dispatchEvent(new CustomEvent('buchim:parent-slot-clicked', {
-                detail: { ...slot, date: dateEntry.date, duration_minutes: dateEntry.duration_minutes },
+                detail: { slot, date: dateEntry.date, duration_minutes: dateEntry.duration_minutes },
               }));
             },
-            onFilledClick: () => {},
+            onFilledClick: (slot) => {
+              window.dispatchEvent(new CustomEvent('buchim:parent-slot-cancel-clicked', {
+                detail: { slot, date: dateEntry.date },
+              }));
+            },
           });
         }
       }
@@ -138,7 +142,7 @@
 
   <script type="module">
     import { db } from '../shared/db.js';
-    import { stickPostit } from '../shared/chalkboard.js';
+    import { stickPostit, peelPostit } from '../shared/chalkboard.js';
     import { escapeHtml } from '../shared/escape.js';
 
     const TOPICS = ['생활태도', '인성', '학업성취 및 성적', '진로진학', '특기적성', '교우관계'];
@@ -153,7 +157,9 @@
     }
 
     window.addEventListener('buchim:parent-slot-clicked', (e) => {
-      const slot = e.detail;
+      const { slot, date, duration_minutes } = e.detail;
+      slot.date = date;
+      slot.duration_minutes = duration_minutes;
       const page = window.buchimGetPageData();
       const endTime = addMinutes(slot.start_time.slice(0, 5), slot.duration_minutes || 20);
       const periodText = slot.period ? ` (${slot.period}교시)` : '';
@@ -257,14 +263,14 @@
             [...selectedTopics], fd.get('notes'), chosenMode
           );
           const slotEl = document.querySelector(`.cb-slot[data-slot-id="${slot.slot_id}"]`);
-          if (slotEl) stickPostit(slotEl, `${escapeHtml(fd.get('studentName'))}<br>${escapeHtml(fd.get('parentName'))}`);
+          if (slotEl) stickPostit(slotEl, `${escapeHtml(fd.get('studentNumber'))}번`);
+          slot.occupied = true;
+          slot.booking_ref = { student_number: fd.get('studentNumber'), cancel_token: cancelToken };
 
-          const cancelLink = `${location.origin}${location.pathname.replace('book.html', 'cancel.html')}?token=${cancelToken}`;
           root.querySelector('.modal-card').innerHTML = `
             <div class="modal-head"><h2>신청이 완료됐어요 🎉</h2></div>
             <p>${slot.date}${periodText} ${slot.start_time.slice(0, 5)}, ${escapeHtml(fd.get('studentName'))} 학생 상담이 접수됐어요.</p>
-            <p>취소하려면 아래 링크로 들어와 예약 비밀번호를 입력하세요. <strong>이 화면을 캡처해두세요.</strong></p>
-            <p><a href="${cancelLink}">${cancelLink}</a></p>
+            <p>취소하고 싶으면 시간표에서 이 칸을 다시 눌러 예약 비밀번호를 입력하면 돼요.</p>
             <button type="button" class="submit-btn" id="modalDone">닫기</button>
           `;
           root.querySelector('#modalDone').addEventListener('click', () => { root.innerHTML = ''; });
@@ -274,6 +280,54 @@
           } else {
             errEl.textContent = err.message;
           }
+        }
+      });
+    });
+
+    window.addEventListener('buchim:parent-slot-cancel-clicked', (e) => {
+      const { slot, date } = e.detail;
+      slot.date = date;
+      const ref = slot.booking_ref;
+      if (!ref?.cancel_token) return;
+      const periodText = slot.period ? ` (${slot.period}교시)` : '';
+
+      const root = document.getElementById('modalRoot');
+      root.innerHTML = `
+        <div class="modal-backdrop" id="cancelBackdrop">
+          <div class="modal-card">
+            <div class="modal-head">
+              <h2>예약 취소</h2>
+              <button type="button" class="modal-close" id="cancelModalClose">×</button>
+            </div>
+            <div class="info-banner">
+              <div class="title">${slot.date}${periodText} ${slot.start_time.slice(0, 5)}</div>
+              <div class="sub">${escapeHtml(ref.student_number)}번 학생 예약</div>
+            </div>
+            <div class="field">
+              <label>예약 비밀번호 <span class="req">*</span></label>
+              <input name="cancelPassword" type="password" placeholder="예약할 때 정한 비밀번호" />
+            </div>
+            <button type="button" class="submit-btn" id="cancelSubmit">이 신청 취소하기</button>
+            <div class="error" id="cancelError"></div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('cancelModalClose').addEventListener('click', () => { root.innerHTML = ''; });
+
+      document.getElementById('cancelSubmit').addEventListener('click', async () => {
+        const password = root.querySelector('[name="cancelPassword"]').value;
+        const errEl = document.getElementById('cancelError');
+        if (!password) { errEl.textContent = '예약할 때 정한 비밀번호를 입력해주세요.'; return; }
+        try {
+          await db.cancelBooking(ref.cancel_token, password);
+          const slotEl = document.querySelector(`.cb-slot[data-slot-id="${slot.slot_id}"]`);
+          if (slotEl) peelPostit(slotEl);
+          slot.occupied = false;
+          slot.booking_ref = null;
+          root.innerHTML = '';
+        } catch (err) {
+          errEl.textContent = err.message;
         }
       });
     });

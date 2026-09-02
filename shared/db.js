@@ -43,8 +43,6 @@ export const db = {
       p_parent_name: parentName, p_parent_phone: parentPhone, p_password: password,
       p_topics: topics, p_notes: notes, p_mode: mode,
     }),
-  getBookingByToken: (cancelToken) =>
-    rpc('get_booking_by_token', { p_cancel_token: cancelToken }),
   cancelBooking: (cancelToken, password) =>
     rpc('cancel_booking', { p_cancel_token: cancelToken, p_password: password }),
 };
