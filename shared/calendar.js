@@ -1,30 +1,24 @@
-// shared/calendar.js — 네이버 예약처럼 달력에서 날짜를 눌러 기간을 고르는 위젯
+// shared/calendar.js — 달력에서 날짜를 눌러 켜고, 다시 누르면 끄는 위젯(개별 선택)
 function fmt(y, m, d) {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 /**
- * container 안에 달력을 그린다. 시작일을 먼저 누르고, 그 다음 종료일을 누르면
- * onRangeConfirmed(startStr, endStr)가 호출된다. 같은 날을 두 번 누르면 하루짜리
- * 기간으로 확정된다. 이미 확정된 상태에서 다시 누르면 새 시작일로 다시 시작한다.
+ * container 안에 달력을 그린다. 날짜를 누르면 onToggleDate(dateStr)가 호출된다.
+ * 이미 선택된 날짜(selectedDates에 포함)를 다시 누르면 빼는 동작은 호출하는 쪽에서
+ * onToggleDate 안에서 처리한다(이 위젯은 선택 상태를 직접 들고 있지 않는다).
  */
-export function renderCalendar(container, { onRangeConfirmed, markedDates, initialStart, initialEnd } = {}) {
+export function renderCalendar(container, { onToggleDate, selectedDates } = {}) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const marked = new Set(markedDates || []);
-  const sortedMarked = [...marked].sort();
+  const selected = new Set(selectedDates || []);
+  const sortedSelected = [...selected].sort();
   let viewYear = today.getFullYear();
   let viewMonth = today.getMonth();
-  if (initialStart) {
-    const [fy, fm] = initialStart.split('-').map(Number);
-    viewYear = fy; viewMonth = fm - 1;
-  } else if (sortedMarked.length > 0) {
-    const [fy, fm] = sortedMarked[0].split('-').map(Number);
+  if (sortedSelected.length > 0) {
+    const [fy, fm] = sortedSelected[0].split('-').map(Number);
     viewYear = fy; viewMonth = fm - 1;
   }
-  let start = initialStart || null; // 'YYYY-MM-DD'
-  let end = initialEnd || null;
-  let confirmed = Boolean(start && end);
 
   function draw() {
     const first = new Date(viewYear, viewMonth, 1);
@@ -40,32 +34,18 @@ export function renderCalendar(container, { onRangeConfirmed, markedDates, initi
       `<div class="cal-dow ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${n}</div>`
     ).join('');
 
-    function rangeClassFor(dateStr) {
-      if (!start) return null;
-      if (!end) return dateStr === start ? 'single-pending' : null;
-      if (dateStr < start || dateStr > end) return null;
-      if (start === end) return 'single';
-      if (dateStr === start) return 'start';
-      if (dateStr === end) return 'end';
-      return 'middle';
-    }
-
     const cellsHtml = cells.map((d) => {
       if (d === null) return `<div class="cal-day cal-day--empty"></div>`;
       const dateStr = fmt(viewYear, viewMonth, d);
       const dow = new Date(viewYear, viewMonth, d).getDay();
       const isPast = dateStr < fmt(today.getFullYear(), today.getMonth(), today.getDate());
       const isToday = dateStr === fmt(today.getFullYear(), today.getMonth(), today.getDate());
-      const range = rangeClassFor(dateStr);
       let cls = 'cal-day';
       if (dow === 0) cls += ' sun'; else if (dow === 6) cls += ' sat';
       if (isPast) cls += ' cal-day--past';
       if (isToday) cls += ' cal-day--today';
-      if (marked.has(dateStr)) cls += ' cal-day--configured';
-      if (range) cls += ' cal-day--onbar';
-      const barVariant = range === 'single-pending' ? 'single' : range;
-      const bar = range ? `<div class="cal-range-bar cal-range-bar--${barVariant}"></div>` : '';
-      return `<div class="cal-day" data-date="${dateStr}">${bar}<button type="button" class="${cls}" ${isPast ? 'disabled' : ''} data-date="${dateStr}">${d}</button></div>`;
+      if (selected.has(dateStr)) cls += ' cal-day--selected';
+      return `<div class="cal-day" data-date="${dateStr}"><button type="button" class="${cls}" ${isPast ? 'disabled' : ''} data-date="${dateStr}">${d}</button></div>`;
     }).join('');
 
     container.innerHTML = `
@@ -76,10 +56,7 @@ export function renderCalendar(container, { onRangeConfirmed, markedDates, initi
           <button type="button" class="cal-nav-btn" id="calNext">›</button>
         </div>
         <div class="cal-grid">${dowHtml}${cellsHtml}</div>
-        <div class="cal-hint">${
-          !start ? '시작일을 눌러주세요' : !end ? '종료일을 눌러주세요 (같은 날을 다시 누르면 하루만 선택돼요)' : `${start} ~ ${end}`
-        }</div>
-        ${marked.size > 0 ? '<div class="cal-hint"><span class="cal-legend-dot"></span> 이미 시간표가 있는 날짜</div>' : ''}
+        <div class="cal-hint">날짜를 눌러서 추가하고, 다시 누르면 빠져요${selected.size > 0 ? ` (${selected.size}일 선택됨)` : ''}</div>
       </div>
     `;
 
@@ -94,25 +71,8 @@ export function renderCalendar(container, { onRangeConfirmed, markedDates, initi
       draw();
     });
     container.querySelectorAll('.cal-day[data-date] button').forEach((btn) => {
-      btn.addEventListener('click', () => onDayClick(btn.dataset.date));
+      btn.addEventListener('click', () => onToggleDate?.(btn.dataset.date));
     });
-  }
-
-  function onDayClick(dateStr) {
-    if (!start || confirmed) {
-      start = dateStr; end = null; confirmed = false;
-      draw();
-      return;
-    }
-    if (dateStr < start) {
-      start = dateStr;
-      draw();
-      return;
-    }
-    end = dateStr;
-    confirmed = true;
-    draw();
-    onRangeConfirmed?.(start, end);
   }
 
   draw();

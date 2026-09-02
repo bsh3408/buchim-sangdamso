@@ -49,4 +49,6 @@ export const db = {
     rpc('cancel_booking', { p_cancel_token: cancelToken, p_phone: phone }),
   teacherCancelBooking: (pageId, adminCode, slotId) =>
     rpc('teacher_cancel_booking', { p_page_id: pageId, p_admin_code: adminCode, p_slot_id: slotId }),
+  deleteScheduleDate: (pageId, adminCode, date) =>
+    rpc('delete_schedule_date', { p_page_id: pageId, p_admin_code: adminCode, p_date: date }),
 };

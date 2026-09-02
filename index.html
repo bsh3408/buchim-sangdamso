@@ -73,17 +73,6 @@ function formatLocalDate(d) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
-function weekdaysBetween(startStr, endStr) {
-  const days = [];
-  const cursor = new Date(startStr + 'T00:00:00');
-  const end = new Date(endStr + 'T00:00:00');
-  while (cursor <= end) {
-    const day = cursor.getDay();
-    if (day !== 0 && day !== 6) days.push(formatLocalDate(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
-}
 function dowLabel(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return ['일', '월', '화', '수', '목', '금', '토'][new Date(y, m - 1, d).getDay()];
@@ -458,7 +447,7 @@ async function doCancelBooking(slot, slotEl, bg) {
  *****************************************************/
 let teacherState = {
   pageId: null, adminCode: null, teacherName: '', school: '', schoolLevel: '', grade: '', teacherClass: '',
-  parentCode: null, dates: new Map(), editingDate: null, lastRangeStart: null, lastRangeEnd: null,
+  parentCode: null, dates: new Map(), editingDate: null,
 };
 
 function startTeacher() {
@@ -650,7 +639,7 @@ function renderAvailabilityEditor() {
   $('#main').innerHTML = `
     <div class="card">
       <h2>상담 가능 시간 설정</h2>
-      <p class="subtitle">달력에서 시작일과 종료일을 누르면, 그 기간(주말 제외)에 똑같이 적용되는 시간표가 바로 만들어져요.</p>
+      <p class="subtitle">달력에서 날짜를 눌러 추가하고, 다시 누르면 빼요. 고른 날짜 전체에 똑같은 시간표가 적용돼요.</p>
       <div id="rangeCalendar"></div>
 
       ${sortedDates.length > 0 ? `
@@ -660,12 +649,7 @@ function renderAvailabilityEditor() {
       <div id="ta-editor"></div>
     </div>
   `;
-  renderCalendar($('#rangeCalendar'), {
-    onRangeConfirmed: createDateRange,
-    markedDates: [...t.dates.keys()],
-    initialStart: t.lastRangeStart,
-    initialEnd: t.lastRangeEnd,
-  });
+  renderCalendar($('#rangeCalendar'), { onToggleDate: toggleDate, selectedDates: [...t.dates.keys()] });
 
   if (sortedDates.length > 0) {
     renderTeacherDateScroll();
@@ -680,22 +664,28 @@ function generateDefaultSlots(entry) {
   entry.slots = buildPresetSlots({ preset, startTime: '09:00', periodCount: 6, consultMinutes: entry.duration_minutes });
 }
 
-function createDateRange(startVal, endVal) {
-  const days = weekdaysBetween(startVal, endVal);
-  if (days.length === 0) return toast('그 사이에 평일이 없어요');
-  teacherState.lastRangeStart = startVal;
-  teacherState.lastRangeEnd = endVal;
-  const defaultPreset = SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
-  for (const d of days) {
-    if (!teacherState.dates.has(d)) {
-      const entry = { date: d, preset: defaultPreset, duration_minutes: 20, slots: [] };
-      generateDefaultSlots(entry);
-      teacherState.dates.set(d, entry);
+async function toggleDate(dateStr) {
+  if (teacherState.dates.has(dateStr)) {
+    const entry = teacherState.dates.get(dateStr);
+    if (entry.slots.some(s => s.booking)) {
+      return toast('이미 예약이 있는 날짜는 뺄 수 없어요. 예약을 먼저 취소해주세요.');
     }
+    try {
+      await db.deleteScheduleDate(teacherState.pageId, teacherState.adminCode, dateStr);
+    } catch (err) {
+      return toast(err.message);
+    }
+    teacherState.dates.delete(dateStr);
+    if (teacherState.editingDate === dateStr) {
+      teacherState.editingDate = [...teacherState.dates.keys()].sort()[0] || null;
+    }
+  } else {
+    const entry = { date: dateStr, preset: null, duration_minutes: 20, slots: [] };
+    generateDefaultSlots(entry);
+    teacherState.dates.set(dateStr, entry);
+    teacherState.editingDate = dateStr;
   }
-  teacherState.editingDate = days[0];
   renderAvailabilityEditor();
-  toast(`${days.length}개 날짜에 기본 시간표를 만들었어요. 필요하면 아래에서 세부 시간을 조정해주세요.`);
 }
 
 function renderTeacherDateScroll() {
