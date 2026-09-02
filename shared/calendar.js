@@ -40,12 +40,15 @@ export function renderCalendar(container, { onToggleDate, selectedDates } = {}) 
       const dow = new Date(viewYear, viewMonth, d).getDay();
       const isPast = dateStr < fmt(today.getFullYear(), today.getMonth(), today.getDate());
       const isToday = dateStr === fmt(today.getFullYear(), today.getMonth(), today.getDate());
+      const isWeekend = dow === 0 || dow === 6;
+      const isDisabled = isPast || isWeekend;
       let cls = 'cal-day';
       if (dow === 0) cls += ' sun'; else if (dow === 6) cls += ' sat';
       if (isPast) cls += ' cal-day--past';
+      else if (isWeekend) cls += ' cal-day--weekend-off';
       if (isToday) cls += ' cal-day--today';
       if (selected.has(dateStr)) cls += ' cal-day--selected';
-      return `<div class="cal-day" data-date="${dateStr}"><button type="button" class="${cls}" ${isPast ? 'disabled' : ''} data-date="${dateStr}">${d}</button></div>`;
+      return `<div class="cal-day" data-date="${dateStr}"><button type="button" class="${cls}" ${isDisabled ? 'disabled' : ''} data-date="${dateStr}">${d}</button></div>`;
     }).join('');
 
     container.innerHTML = `
@@ -57,6 +60,7 @@ export function renderCalendar(container, { onToggleDate, selectedDates } = {}) 
         </div>
         <div class="cal-grid">${dowHtml}${cellsHtml}</div>
         <div class="cal-hint">날짜를 눌러서 추가하고, 다시 누르면 빠져요${selected.size > 0 ? ` (${selected.size}일 선택됨)` : ''}</div>
+        <div class="cal-hint">주말(토·일)은 상담일로 고를 수 없어요</div>
       </div>
     `;
 

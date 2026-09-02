@@ -293,6 +293,7 @@ textarea { resize:vertical; min-height:90px; }
 .cal-day button.sun { color:var(--danger); }
 .cal-day button.sat { color:#2b6cb0; }
 .cal-day button:disabled { opacity:.3; cursor:not-allowed; }
+.cal-day button.cal-day--weekend-off { text-decoration:line-through; }
 .cal-day button:hover:not(:disabled):not(.cal-day--selected) { background:var(--disabled); }
 .cal-day button.cal-day--today { border-color:var(--border-strong); }
 .cal-day button.cal-day--selected {
