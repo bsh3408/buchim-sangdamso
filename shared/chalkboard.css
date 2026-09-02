@@ -248,9 +248,9 @@ textarea { resize:vertical; min-height:90px; }
 }
 
 .postit {
-  position:absolute; inset:6px; background:var(--postit); border-radius:2px;
+  position:absolute; inset:3px; background:var(--postit); border-radius:3px;
   box-shadow:0 4px 10px rgba(0,0,0,.35); display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:2px; color:var(--postit-text); font-size:11px; font-weight:700; text-align:center; line-height:1.35;
+  gap:2px; color:var(--postit-text); font-size:13px; font-weight:700; text-align:center; line-height:1.35;
   transform-origin:top center; opacity:0; pointer-events:none;
 }
 .postit::after {
@@ -270,3 +270,54 @@ textarea { resize:vertical; min-height:90px; }
   100%{opacity:0; transform:translateY(70px) translateX(30px) rotate(55deg) scale(.85);}
 }
 .postit.peeling { animation: peelOff .55s ease-in forwards; }
+
+/* ---- 달력형 날짜 선택 (네이버 예약 스타일) ---- */
+.cal-widget { background:var(--cream); border-radius:12px; padding:16px; }
+.cal-header { display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:12px; }
+.cal-header strong { font-size:15px; }
+.cal-nav-btn {
+  width:30px; height:30px; border-radius:50%; border:1px solid var(--border); background:#fff;
+  color:var(--text); font-size:16px; cursor:pointer; line-height:1;
+}
+.cal-nav-btn:hover { background:var(--disabled); }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.cal-dow { text-align:center; font-size:12px; color:var(--text-muted); padding:4px 0; }
+.cal-dow.sun { color:var(--danger); }
+.cal-dow.sat { color:#2b6cb0; }
+.cal-day { display:flex; align-items:center; justify-content:center; }
+.cal-day--empty { visibility:hidden; }
+.cal-day button {
+  width:36px; height:36px; border-radius:50%; border:1.5px solid transparent; background:transparent;
+  font-size:13px; font-family:inherit; color:var(--text); cursor:pointer;
+}
+.cal-day button.sun { color:var(--danger); }
+.cal-day button.sat { color:#2b6cb0; }
+.cal-day button:disabled { opacity:.3; cursor:not-allowed; }
+.cal-day button:hover:not(:disabled) { background:var(--disabled); }
+.cal-day button.cal-day--today { border-color:var(--border-strong); }
+.cal-day button.cal-day--in-range { background:var(--primary-soft); border-radius:0; }
+.cal-day button.cal-day--start,
+.cal-day button.cal-day--end {
+  background:var(--primary); color:#fff !important; font-weight:700;
+}
+.cal-hint { text-align:center; font-size:12px; color:var(--text-muted); margin-top:10px; }
+
+/* ---- 드래그로 시간 조정하는 타임라인 ---- */
+.tl-ruler {
+  position:relative; height:64px; background:var(--disabled);
+  border-radius:8px; margin-bottom:8px;
+}
+.tl-block {
+  position:absolute; top:6px; bottom:6px; background:var(--success-soft); border:1.5px solid var(--success);
+  border-radius:6px; padding:4px 8px; overflow:hidden; cursor:grab; touch-action:none;
+  display:flex; flex-direction:column; justify-content:center; min-width:36px;
+}
+.tl-block:active { cursor:grabbing; }
+.tl-block--locked { background:rgba(255,226,122,.25); border-color:var(--postit); cursor:not-allowed; }
+.tl-block-label { font-size:11px; font-weight:700; color:var(--primary-dark); white-space:nowrap; }
+.tl-block-time { font-size:10px; color:var(--text-muted); white-space:nowrap; }
+.tl-resize-handle {
+  position:absolute; right:0; top:0; bottom:0; width:8px; cursor:ew-resize; touch-action:none;
+  background:rgba(35,61,46,.15);
+}
+.tl-hint { font-size:11px; color:var(--text-muted); margin-bottom:14px; }

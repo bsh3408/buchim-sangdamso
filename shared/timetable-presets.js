@@ -72,11 +72,7 @@ export function buildAfterschoolSlots({ startTime, endTime, consultMinutes }) {
     .map(s => ({ ...s, period_label: '방과후' }));
 }
 
-/** 교시 하나의 시작 시각만 바꿔서 그 교시의 상담 슬롯을 다시 만든다(길이·교시번호는 그대로). */
+/** 교시 하나의 시작 시각·길이를 바꿔서 그 교시의 상담 슬롯을 다시 만든다(교시 번호는 그대로). */
 export function rebuildPeriod(startTime, classMinutes, consultMinutes, periodNumber) {
   return slicePeriod(toMinutes(startTime), classMinutes, consultMinutes, periodNumber);
-}
-
-export function classMinutesFor(preset) {
-  return PRESET_CLASS_MINUTES[preset];
 }

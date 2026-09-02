@@ -22,8 +22,7 @@ export function renderParentSlotGrid(container, slots, handlers) {
     const open = Boolean(slot.is_open ?? true) && !filled;
 
     if (filled) {
-      const label = slot.booking_ref?.student_number ? `${escapeHtml(slot.booking_ref.student_number)}번` : '';
-      el.innerHTML = `<span class="cb-time">${slot.start_time.slice(0, 5)}</span><div class="postit stuck">${label}</div>`;
+      el.innerHTML = `<div class="postit stuck">예약됨</div>`;
       el.addEventListener('click', () => handlers.onFilledClick?.(slot, el));
     } else if (open) {
       el.classList.add('cb-slot--open');

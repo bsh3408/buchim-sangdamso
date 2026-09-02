@@ -22,8 +22,10 @@
 <script type="module">
 import { db } from './shared/db.js';
 import { escapeHtml } from './shared/escape.js';
-import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots, rebuildPeriod, classMinutesFor } from './shared/timetable-presets.js';
+import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots, rebuildPeriod } from './shared/timetable-presets.js';
 import { renderParentSlotGrid, peelPostit, groupByPeriod } from './shared/chalkboard.js';
+import { renderCalendar } from './shared/calendar.js';
+import { renderTimeline } from './shared/timeline.js';
 
 /*****************************************************
  * 공용 유틸
@@ -54,6 +56,10 @@ function toast(msg, ms) {
   setTimeout(() => t.remove(), ms || 2400);
 }
 function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
+function toMinutesLocal(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
 function addMinutes(hhmm, minutes) {
   const [h, m] = hhmm.split(':').map(Number);
   const total = h * 60 + m + minutes;
@@ -284,11 +290,7 @@ function openBookingModal(slot, dateEntry) {
             <input type="tel" id="bk-pphone" placeholder="010-0000-0000">
           </div>
         </div>
-        <div class="field">
-          <label>예약 비밀번호 <span class="req">*</span></label>
-          <input type="password" id="bk-pw" placeholder="4자리 이상 (취소할 때 필요)" minlength="4">
-          <div class="hint">🔐 이 비밀번호로 나중에 본인이 직접 예약을 취소할 수 있어요. 꼭 기억해주세요.</div>
-        </div>
+        <div class="hint" style="margin-bottom:14px;">🔐 취소할 때는 여기 입력한 학부모 연락처로 본인 확인을 해요. 꼭 정확히 입력해주세요.</div>
         <div class="field">
           <label>상담 방법 <span class="req">*</span></label>
           <div class="choice-group" id="method-group">${methodChoices}</div>
@@ -332,7 +334,6 @@ async function submitBooking(slot, dateEntry, bg) {
   const sname = $('#bk-sname', bg).value.trim();
   const pname = $('#bk-pname', bg).value.trim();
   const pphone = $('#bk-pphone', bg).value.trim();
-  const pw = $('#bk-pw', bg).value;
   const methodEl = $('#method-group .choice.selected', bg);
   const method = methodEl ? methodEl.dataset.method : '';
   const purposes = $$('#purpose-group .choice.selected', bg).map(x => x.dataset.purpose);
@@ -342,7 +343,6 @@ async function submitBooking(slot, dateEntry, bg) {
   if (!sname) return toast('학생 이름을 입력해주세요');
   if (!pname) return toast('학부모 성함을 입력해주세요');
   if (!pphone) return toast('학부모 연락처를 입력해주세요');
-  if (!pw || pw.length < 4) return toast('예약 비밀번호를 4자리 이상 입력해주세요');
   if (!method) return toast('상담 방법을 선택해주세요');
   if (purposes.length === 0) return toast('상담 목적을 1개 이상 선택해주세요');
 
@@ -354,7 +354,7 @@ async function submitBooking(slot, dateEntry, bg) {
     const className = plainGradeClass(page.grade, page.teacher_class);
     const cancelToken = await db.bookSlot(
       parentState.parentCode, slot.slot_id,
-      num, sname, className, pname, pphone, pw, purposes, content, method
+      num, sname, className, pname, pphone, purposes, content, method
     );
     slot.occupied = true;
     slot.booking_ref = { student_number: num, cancel_token: cancelToken };
@@ -384,7 +384,7 @@ function showBookingSuccess(slot, dateEntry, studentName, method) {
         </div>
         <div class="info-box">
           <span class="ico">🔐</span>
-          <div>예약을 취소하려면, 시간표에서 본인이 예약한 포스트잇 칸을 다시 눌러 <strong>설정하신 예약 비밀번호</strong>를 입력하시면 됩니다.</div>
+          <div>예약을 취소하려면, 시간표에서 본인이 예약한 포스트잇 칸을 다시 눌러 <strong>예약할 때 입력한 학부모 연락처</strong>를 입력하시면 됩니다.</div>
         </div>
         <button class="btn btn-primary btn-block" onclick="goHome()">홈으로 돌아가기</button>
         <button class="btn btn-ghost btn-block" style="margin-top:8px;" id="pd-back">이 시간표로 돌아가기</button>
@@ -409,16 +409,15 @@ function openCancelModal(slot, dateEntry, slotEl) {
         </div>
         <div class="booking-summary">
           <strong>${gradeClassLabel(page.grade, page.teacher_class)}</strong><br>
-          ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}<br>
-          예약자: <strong>${escapeHtml(ref.student_number)}번</strong>
+          ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}
         </div>
         <div class="info-box danger">
           <span class="ico">⚠️</span>
-          <div>본인이 예약한 내용이 맞다면, 예약 시 설정한 <strong>예약 비밀번호</strong>를 입력하고 취소해주세요.</div>
+          <div>본인이 예약한 내용이 맞다면, 예약할 때 입력한 <strong>학부모 연락처</strong>를 입력하고 취소해주세요.</div>
         </div>
         <div class="field">
-          <label>예약 비밀번호 <span class="req">*</span></label>
-          <input type="password" id="cx-pw" placeholder="예약 시 설정한 비밀번호">
+          <label>학부모 연락처 <span class="req">*</span></label>
+          <input type="tel" id="cx-phone" placeholder="예약할 때 입력한 연락처">
         </div>
         <div style="display:flex;gap:8px;margin-top:16px;">
           <button class="btn btn-ghost" style="flex:1;" id="cx-close">닫기</button>
@@ -431,18 +430,18 @@ function openCancelModal(slot, dateEntry, slotEl) {
   bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
   $('#cancelClose', bg).addEventListener('click', closeModal);
   $('#cx-close', bg).addEventListener('click', closeModal);
-  setTimeout(() => $('#cx-pw', bg).focus(), 100);
-  $('#cx-pw', bg).addEventListener('keypress', e => { if (e.key === 'Enter') doCancelBooking(slot, slotEl, bg); });
+  setTimeout(() => $('#cx-phone', bg).focus(), 100);
+  $('#cx-phone', bg).addEventListener('keypress', e => { if (e.key === 'Enter') doCancelBooking(slot, slotEl, bg); });
   $('#cx-submit', bg).addEventListener('click', () => doCancelBooking(slot, slotEl, bg));
 }
 
 async function doCancelBooking(slot, slotEl, bg) {
-  const pw = $('#cx-pw', bg).value;
-  if (!pw) return toast('비밀번호를 입력해주세요');
+  const phone = $('#cx-phone', bg).value.trim();
+  if (!phone) return toast('학부모 연락처를 입력해주세요');
   const btn = $('#cx-submit', bg);
   btn.disabled = true; btn.textContent = '처리 중...';
   try {
-    await db.cancelBooking(slot.booking_ref.cancel_token, pw);
+    await db.cancelBooking(slot.booking_ref.cancel_token, phone);
     closeModal();
     toast('예약이 취소되었습니다');
     slot.occupied = false;
@@ -651,12 +650,8 @@ function renderAvailabilityEditor() {
   $('#main').innerHTML = `
     <div class="card">
       <h2>상담 가능 시간 설정</h2>
-      <p class="subtitle">기간을 만들고, 그 안의 교시별 시간대에 상담 방법을 설정해요.</p>
-      <div class="row" style="align-items:flex-end;">
-        <div class="field"><label>시작일</label><input type="date" id="range-start"></div>
-        <div class="field"><label>종료일</label><input type="date" id="range-end"></div>
-      </div>
-      <button class="btn btn-secondary btn-block" id="range-create">기간 만들기 (주말 제외, 이 기간 전체에 똑같이 적용)</button>
+      <p class="subtitle">달력에서 시작일과 종료일을 누르면, 그 기간(주말 제외)에 똑같이 적용되는 시간표가 바로 만들어져요.</p>
+      <div id="rangeCalendar"></div>
 
       ${sortedDates.length > 0 ? `
         <h3 style="margin-top:20px;">날짜</h3>
@@ -665,7 +660,7 @@ function renderAvailabilityEditor() {
       <div id="ta-editor"></div>
     </div>
   `;
-  $('#range-create').addEventListener('click', createDateRange);
+  renderCalendar($('#rangeCalendar'), { onRangeConfirmed: createDateRange });
 
   if (sortedDates.length > 0) {
     renderTeacherDateScroll();
@@ -673,21 +668,27 @@ function renderAvailabilityEditor() {
   }
 }
 
-function createDateRange() {
-  const startVal = $('#range-start').value;
-  const endVal = $('#range-end').value;
-  if (!startVal || !endVal) return toast('시작일과 종료일을 모두 골라주세요');
-  if (startVal > endVal) return toast('종료일이 시작일보다 빠를 수 없어요');
+function generateDefaultSlots(entry) {
+  const preset = entry.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
+  entry.preset = preset;
+  entry.duration_minutes = entry.duration_minutes || 20;
+  entry.slots = buildPresetSlots({ preset, startTime: '09:00', periodCount: 6, consultMinutes: entry.duration_minutes });
+}
+
+function createDateRange(startVal, endVal) {
   const days = weekdaysBetween(startVal, endVal);
   if (days.length === 0) return toast('그 사이에 평일이 없어요');
   const defaultPreset = SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
   for (const d of days) {
     if (!teacherState.dates.has(d)) {
-      teacherState.dates.set(d, { date: d, preset: defaultPreset, duration_minutes: 20, slots: [] });
+      const entry = { date: d, preset: defaultPreset, duration_minutes: 20, slots: [] };
+      generateDefaultSlots(entry);
+      teacherState.dates.set(d, entry);
     }
   }
   teacherState.editingDate = days[0];
   renderAvailabilityEditor();
+  toast(`${days.length}개 날짜에 기본 시간표를 만들었어요. 필요하면 아래에서 세부 시간을 조정해주세요.`);
 }
 
 function renderTeacherDateScroll() {
@@ -740,6 +741,8 @@ function renderAvailabilityDateEditor() {
       <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
       <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
     </div>
+    <h3 style="margin-top:14px;">시간 조정 (칸을 끌어서 옮기거나, 오른쪽 끝을 끌어서 늘여보세요)</h3>
+    <div class="card" style="background:var(--bg);box-shadow:none;border:1px solid var(--border);padding:14px;margin-bottom:16px;" id="periodTimeline"></div>
     <div class="cb-wrap" id="editGrid"></div>
     <button class="btn btn-primary btn-block btn-lg" style="margin-top:16px;" id="saveDateBtn">💾 이 기간 전체에 저장</button>
     <div id="ta-bookingList" style="margin-top:16px;"></div>
@@ -829,15 +832,51 @@ function createTtSlot(slot, durationMinutes, handlers) {
   return node;
 }
 
-function regeneratePeriod(entry, group, newStartTime) {
-  if (group.slots.some(s => s.booking)) {
-    return toast('이미 예약이 있는 교시는 시간을 바꿀 수 없어요. 예약을 먼저 취소해주세요.');
+function applyTimelineChange(entry, key, { startMinutes, durationMinutes }) {
+  if (typeof key === 'number') {
+    const freshSlots = rebuildPeriod(addMinutes('00:00', startMinutes), durationMinutes, entry.duration_minutes || 20, key);
+    entry.slots = entry.slots.filter(s => s.period !== key).concat(freshSlots);
+  } else {
+    const labelValue = key === 'custom' ? undefined : key;
+    const consultMinutes = entry.duration_minutes || 20;
+    const freshSlots = buildAfterschoolSlots({
+      startTime: addMinutes('00:00', startMinutes),
+      endTime: addMinutes('00:00', startMinutes + durationMinutes),
+      consultMinutes,
+    }).map(s => ({ ...s, period_label: labelValue }));
+    entry.slots = entry.slots.filter(s => (s.period_label ?? 'custom') !== key).concat(freshSlots);
   }
-  const classMinutes = classMinutesFor(entry.preset);
-  if (!classMinutes || !newStartTime) return toast('이 시간표 종류에서는 교시 시간을 따로 바꿀 수 없어요.');
-  const freshSlots = rebuildPeriod(newStartTime, classMinutes, entry.duration_minutes || 20, group.period);
-  entry.slots = entry.slots.filter(s => s.period !== group.period).concat(freshSlots);
   renderEditGrid();
+}
+
+function renderPeriodTimeline(entry) {
+  const timelineCard = $('#periodTimeline');
+  const groups = groupByPeriod(entry.slots);
+  if (groups.length === 0) { timelineCard.innerHTML = ''; return; }
+
+  const items = groups.map(group => {
+    const key = group.period ?? (group.period_label ?? 'custom');
+    const startMinutes = toMinutesLocal(group.slots[0].start_time.slice(0, 5));
+    const lastSlot = group.slots[group.slots.length - 1];
+    const endMinutes = toMinutesLocal(lastSlot.start_time.slice(0, 5)) + (entry.duration_minutes || 20);
+    return {
+      period: key,
+      startMinutes,
+      durationMinutes: Math.max(endMinutes - startMinutes, entry.duration_minutes || 20),
+      locked: group.slots.some(s => s.booking),
+      label: group.period_label || (group.period ? `${group.period}교시` : '직접 설정'),
+    };
+  });
+
+  const allStarts = items.map(p => p.startMinutes);
+  const allEnds = items.map(p => p.startMinutes + p.durationMinutes);
+  const dayStartMinutes = Math.max(0, Math.min(...allStarts) - 30);
+  const dayEndMinutes = Math.min(24 * 60, Math.max(...allEnds) + 30);
+
+  renderTimeline(timelineCard, items, {
+    dayStartMinutes, dayEndMinutes,
+    onChange: (key, change) => applyTimelineChange(entry, key, change),
+  });
 }
 
 function renderEditGrid() {
@@ -863,23 +902,14 @@ function renderEditGrid() {
 
   for (const group of groupByPeriod(entry.slots)) {
     const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
-    const firstStart = group.slots[0]?.start_time?.slice(0, 5) || '09:00';
     const row = document.createElement('div');
     row.className = 'period-table-row';
     row.appendChild(el(`
       <div class="period-table-head">
         <strong>${escapeHtml(headLabel)}</strong>
-        ${group.period ? `<input type="time" class="period-start-input" value="${firstStart}">
-          <button type="button" class="btn btn-secondary period-regen-btn" style="padding:6px 10px;font-size:12px;">이 교시만 다시 배치</button>` : ''}
         ${group.period_range ? `<span class="hint-inline">기존 ${group.period_range}</span>` : ''}
       </div>
     `));
-    if (group.period) {
-      const head = row.querySelector('.period-table-head');
-      head.querySelector('.period-regen-btn').addEventListener('click', () => {
-        regeneratePeriod(entry, group, head.querySelector('.period-start-input').value);
-      });
-    }
     const slotsWrap = document.createElement('div');
     slotsWrap.className = 'period-table-slots';
     for (const slot of group.slots) {
@@ -889,6 +919,7 @@ function renderEditGrid() {
     container.appendChild(row);
   }
 
+  renderPeriodTimeline(entry);
   renderTeacherBookingList();
 }
 

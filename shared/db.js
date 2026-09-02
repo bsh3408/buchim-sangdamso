@@ -38,15 +38,15 @@ export const db = {
     rpc('publish_page', { p_page_id: pageId, p_admin_code: adminCode }),
   getPublicSchedule: (parentCode) =>
     rpc('get_public_schedule', { p_parent_code: parentCode }),
-  bookSlot: (parentCode, slotId, studentNumber, studentName, className, parentName, parentPhone, password, topics, notes, mode) =>
+  bookSlot: (parentCode, slotId, studentNumber, studentName, className, parentName, parentPhone, topics, notes, mode) =>
     rpc('book_slot', {
       p_parent_code: parentCode, p_slot_id: slotId,
       p_student_number: studentNumber, p_student_name: studentName, p_class_name: className,
-      p_parent_name: parentName, p_parent_phone: parentPhone, p_password: password,
+      p_parent_name: parentName, p_parent_phone: parentPhone,
       p_topics: topics, p_notes: notes, p_mode: mode,
     }),
-  cancelBooking: (cancelToken, password) =>
-    rpc('cancel_booking', { p_cancel_token: cancelToken, p_password: password }),
+  cancelBooking: (cancelToken, phone) =>
+    rpc('cancel_booking', { p_cancel_token: cancelToken, p_phone: phone }),
   teacherCancelBooking: (pageId, adminCode, slotId) =>
     rpc('teacher_cancel_booking', { p_page_id: pageId, p_admin_code: adminCode, p_slot_id: slotId }),
 };
