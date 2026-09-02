@@ -45,4 +45,6 @@ export const db = {
     }),
   cancelBooking: (cancelToken, password) =>
     rpc('cancel_booking', { p_cancel_token: cancelToken, p_password: password }),
+  teacherCancelBooking: (pageId, adminCode, slotId) =>
+    rpc('teacher_cancel_booking', { p_page_id: pageId, p_admin_code: adminCode, p_slot_id: slotId }),
 };

@@ -1,26 +1,842 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>붙임상담소</title>
-  <style>
-    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
-      background:#233d2e; font-family:"Pretendard","Noto Sans KR",-apple-system,sans-serif; }
-    .home { background:#fffdf7; border-radius:16px; padding:40px; width:min(90vw,420px); text-align:center; }
-    h1 { margin:0 0 8px; color:#233d2e; }
-    p { color:#666; margin:0 0 28px; }
-    a.btn { display:block; padding:16px; border-radius:10px; text-decoration:none; font-weight:700; margin-bottom:12px; }
-    .btn--teacher { background:#233d2e; color:#fff; }
-    .btn--parent { background:#ffe27a; color:#5a4a00; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>붙임상담소</title>
+<link rel="stylesheet" href="./shared/chalkboard.css" />
 </head>
 <body>
-  <div class="home">
-    <h1>붙임상담소</h1>
-    <p>칠판에 포스트잇 붙이듯, 학부모 상담을 예약해요</p>
-    <a class="btn btn--teacher" href="./teacher/setup.html">선생님 — 상담 만들기</a>
-    <a class="btn btn--parent" href="./parent/enter.html">학부모 — 코드로 신청하기</a>
-  </div>
+<div id="app">
+  <header>
+    <div class="logo" onclick="goHome()"><span>📌</span>붙임상담소</div>
+    <div class="header-actions">
+      <button class="back-btn" id="backBtn" onclick="goBack()" style="display:none;">&larr; 뒤로</button>
+      <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">🎓 선생님이신가요</button>
+    </div>
+  </header>
+  <main id="main"></main>
+</div>
+<div id="modalRoot"></div>
+
+<script type="module">
+import { db } from './shared/db.js';
+import { escapeHtml } from './shared/escape.js';
+import { buildPresetSlots, buildCustomSlots } from './shared/timetable-presets.js';
+import { renderParentSlotGrid, renderEditingSlotGrid, peelPostit, groupByPeriod } from './shared/chalkboard.js';
+
+/*****************************************************
+ * 공용 유틸
+ *****************************************************/
+const PURPOSES = ['생활태도', '인성', '학업성취 및 성적', '진로진학', '특기적성', '교우관계'];
+const MODE_LABEL = { phone: '전화', in_person: '방문' };
+
+function $(sel, parent) { return (parent || document).querySelector(sel); }
+function $$(sel, parent) { return Array.from((parent || document).querySelectorAll(sel)); }
+function el(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
+function toast(msg, ms) {
+  const t = el(`<div class="toast">${escapeHtml(msg)}</div>`);
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms || 2400);
+}
+function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
+function addMinutes(hhmm, minutes) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = h * 60 + m + minutes;
+  const hh = String(Math.floor(total / 60) % 24).padStart(2, '0');
+  const mm = String(total % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+function formatLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function weekdaysBetween(startStr, endStr) {
+  const days = [];
+  const cursor = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) days.push(formatLocalDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+function dowLabel(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return ['일', '월', '화', '수', '목', '금', '토'][new Date(y, m - 1, d).getDay()];
+}
+
+/*****************************************************
+ * 화면 스택
+ *****************************************************/
+let viewStack = [];
+let currentView = null;
+
+function setView(name, render, noPush) {
+  if (!noPush && currentView) viewStack.push(currentView);
+  currentView = { name, render };
+  $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
+  render();
+  window.scrollTo(0, 0);
+}
+function goBack() {
+  if (viewStack.length === 0) return;
+  currentView = viewStack.pop();
+  $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
+  currentView.render();
+  window.scrollTo(0, 0);
+}
+function goHome() {
+  viewStack = [];
+  parentState = { parentCode: null, pageData: null, selectedDate: null };
+  renderHome();
+}
+
+/*****************************************************
+ * 홈 화면
+ *****************************************************/
+function renderHome() {
+  setView('home', () => {
+    $('#main').innerHTML = `
+      <div class="home-title">
+        <h1>📌 붙임상담소</h1>
+        <p>칠판에 포스트잇 붙이듯, 학부모 상담을 예약해요</p>
+      </div>
+      <div class="home-choices">
+        <div class="home-choice" onclick="startParent()">
+          <div class="icon">👨‍👩‍👧</div>
+          <div class="txt">
+            <strong>상담 예약하기</strong>
+            <span>선생님이 알려주신 코드로 예약해요</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }, true);
+}
+
+/*****************************************************
+ * 학부모 플로우
+ *****************************************************/
+let parentState = { parentCode: null, pageData: null, selectedDate: null };
+
+function startParent() {
+  setView('parent-enter', () => {
+    $('#main').innerHTML = `
+      <div class="card">
+        <h2>선생님이 알려주신 코드를 입력해주세요</h2>
+        <div class="field">
+          <input type="text" id="pc-code" maxlength="10" placeholder="예: A3F9K2"
+                 style="text-align:center; letter-spacing:2px; text-transform:uppercase; font-size:16px;">
+        </div>
+        <button class="btn btn-primary btn-block" id="pc-submit">신청하러 가기</button>
+      </div>
+    `;
+    $('#pc-code').focus();
+    $('#pc-code').addEventListener('keypress', e => { if (e.key === 'Enter') submitParentCode(); });
+    $('#pc-submit').addEventListener('click', submitParentCode);
+  });
+}
+
+async function submitParentCode() {
+  const code = $('#pc-code').value.trim().toUpperCase();
+  if (!code) return toast('코드를 입력해주세요');
+  const btn = $('#pc-submit');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    await loadParentSchedule(code);
+    renderParentTimetableView();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '신청하러 가기';
+    toast(err.message);
+  }
+}
+
+async function loadParentSchedule(parentCode) {
+  const data = await db.getPublicSchedule(parentCode);
+  parentState.parentCode = parentCode;
+  parentState.pageData = data;
+  parentState.selectedDate = data.dates[0]?.date ?? null;
+  history.replaceState(null, '', `${location.pathname}?code=${encodeURIComponent(parentCode)}`);
+}
+
+function renderParentTimetableView() {
+  const data = parentState.pageData;
+  setView('parent-timetable', () => {
+    $('#main').innerHTML = `
+      <div class="card">
+        <h2>${escapeHtml(data.grade || '')} ${escapeHtml(data.teacher_class || '')} · ${escapeHtml(data.teacher_name)} 선생님</h2>
+        <p class="subtitle">상담 신청 시간표예요</p>
+
+        ${data.dates.length === 0 ? '<div class="empty-state"><div class="big">📭</div><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
+          <h3>날짜</h3>
+          <div class="date-scroll" id="pt-dateScroll"></div>
+          <div class="legend">
+            <div class="legend-item"><div class="legend-box available"></div>예약 가능</div>
+            <div class="legend-item"><div class="legend-box booked"></div>예약됨 (눌러서 취소)</div>
+          </div>
+          <div class="cb-wrap" id="pt-timetable"></div>
+        `}
+      </div>
+    `;
+    if (data.dates.length > 0) {
+      renderParentDateScroll();
+      renderParentTimetableBody();
+    }
+  });
+}
+
+function renderParentDateScroll() {
+  const scroll = $('#pt-dateScroll');
+  scroll.innerHTML = parentState.pageData.dates.map(d => `
+    <div class="date-chip ${d.date === parentState.selectedDate ? 'selected' : ''}" data-date="${d.date}">
+      <div class="dow">${d.date.slice(5)} (${dowLabel(d.date)})</div>
+      <div class="dd">${Number(d.date.slice(8, 10))}</div>
+    </div>
+  `).join('');
+  $$('.date-chip', scroll).forEach(chip => {
+    chip.addEventListener('click', () => {
+      parentState.selectedDate = chip.dataset.date;
+      renderParentDateScroll();
+      renderParentTimetableBody();
+    });
+  });
+}
+
+function renderParentTimetableBody() {
+  const area = $('#pt-timetable');
+  const dateEntry = parentState.pageData.dates.find(d => d.date === parentState.selectedDate);
+  area.innerHTML = `<div class="cb-title" style="color:var(--chalk);opacity:.85;font-size:13px;margin-bottom:14px;">${dateEntry.date}</div>`;
+  for (const group of groupByPeriod(dateEntry.slots)) {
+    const block = el(`<div class="period-group"></div>`);
+    if (group.period) {
+      block.innerHTML = `<div class="period-label"><strong style="color:var(--chalk);">${group.period}교시</strong><span style="color:var(--chalk-dim);">${group.period_range}</span></div>`;
+    }
+    const grid = document.createElement('div');
+    block.appendChild(grid);
+    area.appendChild(block);
+    renderParentSlotGrid(grid, group.slots, {
+      onEmptyClick: (slot) => openBookingModal(slot, dateEntry),
+      onFilledClick: (slot, slotEl) => openCancelModal(slot, dateEntry, slotEl),
+    });
+  }
+}
+
+/*****************************************************
+ * 예약 / 취소 모달
+ *****************************************************/
+function openBookingModal(slot, dateEntry) {
+  const page = parentState.pageData;
+  const endTime = addMinutes(slot.start_time.slice(0, 5), dateEntry.duration_minutes || 20);
+  const periodText = slot.period ? ` (${slot.period}교시)` : '';
+  const allowedModes = slot.mode === 'both' ? ['in_person', 'phone'] : [slot.mode];
+
+  const methodChoices = allowedModes.map(m =>
+    `<div class="choice" data-method="${m}">${m === 'in_person' ? '🏫 방문' : '📞 전화'}</div>`
+  ).join('');
+  const purposeChoices = PURPOSES.map(p => `<div class="choice" data-purpose="${escapeHtml(p)}">${escapeHtml(p)}</div>`).join('');
+
+  const bg = el(`
+    <div class="modal-bg" id="bookBg">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>상담 예약</h2>
+          <button class="modal-close" id="bookClose">✕</button>
+        </div>
+        <div class="booking-summary">
+          <strong>${escapeHtml(page.grade || '')} ${escapeHtml(page.teacher_class || '')}</strong><br>
+          ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)} ~ ${endTime}
+        </div>
+        <div class="field">
+          <label>학생 번호 <span class="req">*</span></label>
+          <input type="number" id="bk-num" min="1" max="50" placeholder="예: 12">
+        </div>
+        <div class="field">
+          <label>학생 이름 <span class="req">*</span></label>
+          <input type="text" id="bk-sname" placeholder="예: 홍길동">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>학부모 성함 <span class="req">*</span></label>
+            <input type="text" id="bk-pname" placeholder="예: 홍길동 학부모">
+          </div>
+          <div class="field">
+            <label>학부모 연락처 <span class="req">*</span></label>
+            <input type="tel" id="bk-pphone" placeholder="010-0000-0000">
+          </div>
+        </div>
+        <div class="field">
+          <label>예약 비밀번호 <span class="req">*</span></label>
+          <input type="password" id="bk-pw" placeholder="4자리 이상 (취소할 때 필요)" minlength="4">
+          <div class="hint">🔐 이 비밀번호로 나중에 본인이 직접 예약을 취소할 수 있어요. 꼭 기억해주세요.</div>
+        </div>
+        <div class="field">
+          <label>상담 방법 <span class="req">*</span></label>
+          <div class="choice-group" id="method-group">${methodChoices}</div>
+          <div class="hint">선생님이 이 시간에 가능한 방법만 선택할 수 있어요</div>
+        </div>
+        <div class="field">
+          <label>상담 목적 <span class="req">*</span> <span style="font-weight:400;color:var(--text-muted);font-size:12px;">(중복 선택 가능)</span></label>
+          <div class="choice-group" id="purpose-group">${purposeChoices}</div>
+        </div>
+        <div class="field">
+          <label>상담 내용 (선택)</label>
+          <textarea id="bk-content" placeholder="선생님께 묻고 싶은 질문이나 미리 알려드릴 내용을 적어주세요"></textarea>
+        </div>
+        <div class="field" style="margin-top:20px;">
+          <button class="btn btn-primary btn-block btn-lg" id="bk-submit">예약 신청하기</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById('modalRoot').appendChild(bg);
+
+  bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
+  $('#bookClose', bg).addEventListener('click', closeModal);
+
+  if (allowedModes.length === 1) $(`.choice[data-method]`, bg).classList.add('selected');
+  $$('#method-group .choice', bg).forEach(c => {
+    c.addEventListener('click', () => {
+      $$('#method-group .choice', bg).forEach(x => x.classList.remove('selected'));
+      c.classList.add('selected');
+    });
+  });
+  $$('#purpose-group .choice', bg).forEach(c => {
+    c.addEventListener('click', () => c.classList.toggle('selected'));
+  });
+
+  $('#bk-submit', bg).addEventListener('click', () => submitBooking(slot, dateEntry, bg));
+}
+
+async function submitBooking(slot, dateEntry, bg) {
+  const num = $('#bk-num', bg).value.trim();
+  const sname = $('#bk-sname', bg).value.trim();
+  const pname = $('#bk-pname', bg).value.trim();
+  const pphone = $('#bk-pphone', bg).value.trim();
+  const pw = $('#bk-pw', bg).value;
+  const methodEl = $('#method-group .choice.selected', bg);
+  const method = methodEl ? methodEl.dataset.method : '';
+  const purposes = $$('#purpose-group .choice.selected', bg).map(x => x.dataset.purpose);
+  const content = $('#bk-content', bg).value.trim();
+
+  if (!num) return toast('학생 번호를 입력해주세요');
+  if (!sname) return toast('학생 이름을 입력해주세요');
+  if (!pname) return toast('학부모 성함을 입력해주세요');
+  if (!pphone) return toast('학부모 연락처를 입력해주세요');
+  if (!pw || pw.length < 4) return toast('예약 비밀번호를 4자리 이상 입력해주세요');
+  if (!method) return toast('상담 방법을 선택해주세요');
+  if (purposes.length === 0) return toast('상담 목적을 1개 이상 선택해주세요');
+
+  const btn = $('#bk-submit', bg);
+  btn.disabled = true; btn.textContent = '예약 중...';
+
+  try {
+    const page = parentState.pageData;
+    const className = `${page.grade || ''} ${page.teacher_class || ''}`.trim();
+    const cancelToken = await db.bookSlot(
+      parentState.parentCode, slot.slot_id,
+      num, sname, className, pname, pphone, pw, purposes, content, method
+    );
+    slot.occupied = true;
+    slot.booking_ref = { student_number: num, cancel_token: cancelToken };
+    closeModal();
+    showBookingSuccess(slot, dateEntry, sname, method);
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '예약 신청하기';
+    if (err.message === 'ALREADY_BOOKED') toast('방금 다른 분이 신청했어요. 새로고침해서 다른 시간을 골라주세요.');
+    else toast(err.message);
+  }
+}
+
+function showBookingSuccess(slot, dateEntry, studentName, method) {
+  setView('parent-done', () => {
+    const page = parentState.pageData;
+    const periodText = slot.period ? ` (${slot.period}교시)` : '';
+    $('#main').innerHTML = `
+      <div class="card" style="text-align:center;padding:36px 22px;">
+        <div style="font-size:56px;margin-bottom:14px;">✅</div>
+        <h1 style="font-size:20px;">예약이 완료되었어요!</h1>
+        <p class="subtitle">선생님께 신청 내용이 전달됩니다</p>
+        <div style="background:var(--primary-soft);padding:16px;border-radius:12px;text-align:left;margin:16px 0;">
+          <div style="margin-bottom:6px;"><strong>선생님</strong> · ${escapeHtml(page.grade || '')} ${escapeHtml(page.teacher_class || '')} ${escapeHtml(page.teacher_name)}</div>
+          <div style="margin-bottom:6px;"><strong>학생</strong> · ${escapeHtml(studentName)}</div>
+          <div style="margin-bottom:6px;"><strong>일시</strong> · ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}</div>
+          <div><strong>상담 방법</strong> · ${MODE_LABEL[method]}</div>
+        </div>
+        <div class="info-box">
+          <span class="ico">🔐</span>
+          <div>예약을 취소하려면, 시간표에서 본인이 예약한 포스트잇 칸을 다시 눌러 <strong>설정하신 예약 비밀번호</strong>를 입력하시면 됩니다.</div>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="goHome()">홈으로 돌아가기</button>
+        <button class="btn btn-ghost btn-block" style="margin-top:8px;" id="pd-back">이 시간표로 돌아가기</button>
+      </div>
+    `;
+    $('#pd-back').addEventListener('click', goBack);
+  });
+}
+
+function openCancelModal(slot, dateEntry, slotEl) {
+  const ref = slot.booking_ref;
+  if (!ref?.cancel_token) return toast('이 예약은 취소 정보를 불러올 수 없습니다.');
+  const periodText = slot.period ? ` (${slot.period}교시)` : '';
+  const page = parentState.pageData;
+
+  const bg = el(`
+    <div class="modal-bg" id="cancelBg">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>예약 취소</h2>
+          <button class="modal-close" id="cancelClose">✕</button>
+        </div>
+        <div class="booking-summary">
+          <strong>${escapeHtml(page.grade || '')} ${escapeHtml(page.teacher_class || '')}</strong><br>
+          ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}<br>
+          예약자: <strong>${escapeHtml(ref.student_number)}번</strong>
+        </div>
+        <div class="info-box danger">
+          <span class="ico">⚠️</span>
+          <div>본인이 예약한 내용이 맞다면, 예약 시 설정한 <strong>예약 비밀번호</strong>를 입력하고 취소해주세요.</div>
+        </div>
+        <div class="field">
+          <label>예약 비밀번호 <span class="req">*</span></label>
+          <input type="password" id="cx-pw" placeholder="예약 시 설정한 비밀번호">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button class="btn btn-ghost" style="flex:1;" id="cx-close">닫기</button>
+          <button class="btn btn-danger" style="flex:1;" id="cx-submit">예약 취소하기</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById('modalRoot').appendChild(bg);
+  bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
+  $('#cancelClose', bg).addEventListener('click', closeModal);
+  $('#cx-close', bg).addEventListener('click', closeModal);
+  setTimeout(() => $('#cx-pw', bg).focus(), 100);
+  $('#cx-pw', bg).addEventListener('keypress', e => { if (e.key === 'Enter') doCancelBooking(slot, slotEl, bg); });
+  $('#cx-submit', bg).addEventListener('click', () => doCancelBooking(slot, slotEl, bg));
+}
+
+async function doCancelBooking(slot, slotEl, bg) {
+  const pw = $('#cx-pw', bg).value;
+  if (!pw) return toast('비밀번호를 입력해주세요');
+  const btn = $('#cx-submit', bg);
+  btn.disabled = true; btn.textContent = '처리 중...';
+  try {
+    await db.cancelBooking(slot.booking_ref.cancel_token, pw);
+    closeModal();
+    toast('예약이 취소되었습니다');
+    slot.occupied = false;
+    slot.booking_ref = null;
+    peelPostit(slotEl, () => renderParentTimetableBody());
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '예약 취소하기';
+    toast(err.message);
+  }
+}
+
+/*****************************************************
+ * 담임 플로우
+ *****************************************************/
+let teacherState = {
+  pageId: null, adminCode: null, teacherName: '', grade: '', teacherClass: '',
+  parentCode: null, dates: new Map(), editingDate: null,
+};
+
+function startTeacher() {
+  setView('teacher-login', () => {
+    $('#main').innerHTML = `
+      <div class="card">
+        <h2>🎓 선생님 등록 · 로그인</h2>
+        <p class="subtitle">처음이면 새로 등록되고, 두 번째부터는 같은 정보로 로그인돼요.</p>
+        <div class="info-box">
+          <span class="ico">⚠️</span>
+          <div>코드는 나중에 다시 들어올 때 필요해요. 꼭 기억해두세요!</div>
+        </div>
+        <div class="field"><label>이름</label><input type="text" id="tl-name" placeholder="예: 김민준"></div>
+        <div class="field"><label>코드 (4자 이상)</label><input type="password" id="tl-code" placeholder="나만 아는 코드"></div>
+        <div class="row">
+          <div class="field"><label>학교</label><input type="text" id="tl-school" placeholder="예: 신장고등학교"></div>
+          <div class="field"><label>학년</label><input type="text" id="tl-grade" placeholder="예: 2학년"></div>
+        </div>
+        <div class="field"><label>반</label><input type="text" id="tl-class" placeholder="예: 3반"></div>
+        <button class="btn btn-primary btn-block" id="tl-submit">시작하기</button>
+      </div>
+    `;
+    $('#tl-submit', $('#main')).addEventListener('click', doTeacherLogin);
+  });
+}
+
+async function doTeacherLogin() {
+  const name = $('#tl-name').value.trim();
+  const code = $('#tl-code').value;
+  const school = $('#tl-school').value.trim();
+  const grade = $('#tl-grade').value.trim();
+  const teacherClass = $('#tl-class').value.trim();
+  if (!name || !code || !school || !grade || !teacherClass) return toast('모든 항목을 입력해주세요');
+
+  const btn = $('#tl-submit');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    const pageId = await db.getOrCreateTeacher(name, code, school, grade, teacherClass);
+    teacherState.pageId = pageId;
+    teacherState.adminCode = code;
+    teacherState.grade = grade;
+    teacherState.teacherClass = teacherClass;
+    await loadTeacherSchedule();
+    renderTeacherDashboard();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '시작하기';
+    toast(err.message);
+  }
+}
+
+async function loadTeacherSchedule() {
+  const data = await db.getTeacherSchedule(teacherState.pageId, teacherState.adminCode);
+  teacherState.teacherName = data.teacher_name;
+  teacherState.parentCode = data.parent_code;
+  teacherState.dates = new Map(data.dates.map(d => [d.date, {
+    ...d,
+    slots: d.slots.map(s => ({ ...s, start_time: s.start_time.slice(0, 5) })),
+  }]));
+}
+
+function renderTeacherDashboard() {
+  setView('teacher-dashboard', () => {
+    const t = teacherState;
+    $('#main').innerHTML = `
+      <div class="card">
+        <h2>${escapeHtml(t.grade)} ${escapeHtml(t.teacherClass)} · ${escapeHtml(t.teacherName)} 선생님</h2>
+        <p class="subtitle">환영합니다 👋</p>
+        ${t.parentCode ? `
+          <div class="info-box">
+            <span class="ico">🔗</span>
+            <div>학부모 공유 코드: <strong>${t.parentCode}</strong><br>
+            <span class="code-display" style="display:inline-block;margin-top:6px;">${location.origin}${location.pathname}?code=${t.parentCode}</span></div>
+          </div>
+        ` : `
+          <div class="info-box">
+            <span class="ico">ℹ️</span>
+            <div>상담 가능 시간을 설정한 뒤 게시하면, 학부모에게 보낼 공유 코드가 만들어져요.</div>
+          </div>
+        `}
+      </div>
+      <div class="home-choices">
+        <div class="home-choice" onclick="openAvailabilityEditor()">
+          <div class="icon">⏰</div>
+          <div class="txt"><strong>상담 가능 시간 설정</strong><span>기간 만들기 · 시간대 · 상담 방법 설정</span></div>
+        </div>
+        <div class="home-choice" onclick="openBookingsList()">
+          <div class="icon">📅</div>
+          <div class="txt"><strong>예약 현황</strong><span>학부모 예약 내용 확인 · 취소</span></div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+function openAvailabilityEditor() {
+  if (!teacherState.editingDate && teacherState.dates.size > 0) {
+    teacherState.editingDate = [...teacherState.dates.keys()].sort()[0];
+  }
+  setView('teacher-availability', renderAvailabilityEditor);
+}
+
+function renderAvailabilityEditor() {
+  const t = teacherState;
+  const sortedDates = [...t.dates.keys()].sort();
+  $('#main').innerHTML = `
+    <div class="card">
+      <h2>상담 가능 시간 설정</h2>
+      <p class="subtitle">기간을 만들고, 그 안의 교시별 시간대에 상담 방법을 설정해요.</p>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field"><label>시작일</label><input type="date" id="range-start"></div>
+        <div class="field"><label>종료일</label><input type="date" id="range-end"></div>
+      </div>
+      <button class="btn btn-secondary btn-block" id="range-create">기간 만들기 (주말 제외, 이 기간 전체에 똑같이 적용)</button>
+
+      ${sortedDates.length > 0 ? `
+        <h3 style="margin-top:20px;">날짜</h3>
+        <div class="date-scroll" id="ta-dateScroll"></div>
+      ` : ''}
+      <div id="ta-editor"></div>
+    </div>
+  `;
+  $('#range-create').addEventListener('click', createDateRange);
+
+  if (sortedDates.length > 0) {
+    renderTeacherDateScroll();
+    renderAvailabilityDateEditor();
+  }
+}
+
+function createDateRange() {
+  const startVal = $('#range-start').value;
+  const endVal = $('#range-end').value;
+  if (!startVal || !endVal) return toast('시작일과 종료일을 모두 골라주세요');
+  if (startVal > endVal) return toast('종료일이 시작일보다 빠를 수 없어요');
+  const days = weekdaysBetween(startVal, endVal);
+  if (days.length === 0) return toast('그 사이에 평일이 없어요');
+  for (const d of days) {
+    if (!teacherState.dates.has(d)) {
+      teacherState.dates.set(d, { date: d, preset: 'middle', duration_minutes: 20, slots: [] });
+    }
+  }
+  teacherState.editingDate = days[0];
+  renderAvailabilityEditor();
+}
+
+function renderTeacherDateScroll() {
+  const scroll = $('#ta-dateScroll');
+  const sortedDates = [...teacherState.dates.keys()].sort();
+  scroll.innerHTML = sortedDates.map(d => `
+    <div class="date-chip ${d === teacherState.editingDate ? 'selected' : ''}" data-date="${d}">
+      <div class="dow">${d.slice(5)} (${dowLabel(d)})</div>
+      <div class="dd">${Number(d.slice(8, 10))}</div>
+    </div>
+  `).join('');
+  $$('.date-chip', scroll).forEach(chip => {
+    chip.addEventListener('click', () => {
+      teacherState.editingDate = chip.dataset.date;
+      renderTeacherDateScroll();
+      renderAvailabilityDateEditor();
+    });
+  });
+}
+
+function renderAvailabilityDateEditor() {
+  const entry = teacherState.dates.get(teacherState.editingDate);
+  const editor = $('#ta-editor');
+  editor.innerHTML = `
+    <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap;align-items:center;">
+      <select id="presetSelect">
+        <option value="middle">중학교형 (45분 수업)</option>
+        <option value="high">고등학교형 (50분 수업)</option>
+        <option value="custom">직접 설정</option>
+      </select>
+      <span id="presetRange">
+        시작 <input type="time" id="presetStart" value="09:00" style="width:110px;">
+        교시 수 <input type="number" id="periodCount" min="1" max="10" value="6" style="width:56px;">
+      </span>
+      <span id="customRange" style="display:none;">
+        시작 <input type="time" id="customStart" value="09:00" style="width:110px;">
+        종료 <input type="time" id="customEnd" value="16:00" style="width:110px;">
+      </span>
+      상담시간(분) <input type="number" id="consultMinutes" min="5" max="120" value="${entry.duration_minutes || 20}" style="width:60px;">
+      <button class="btn btn-secondary" id="generateBtn">시간표 만들기</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="btn btn-secondary" style="flex:1;" id="bulkOpenBtn">전체 열기 (방문·전화)</button>
+      <button class="btn btn-ghost" style="flex:1;" id="bulkCloseBtn">전체 닫기</button>
+    </div>
+    <div class="cb-wrap" id="editGrid"></div>
+    <button class="btn btn-primary btn-block btn-lg" style="margin-top:16px;" id="saveDateBtn">💾 이 기간 전체에 저장</button>
+    <div id="ta-bookingList" style="margin-top:16px;"></div>
+  `;
+
+  $('#presetSelect').value = entry.preset || 'middle';
+  const syncPresetVisibility = () => {
+    const custom = $('#presetSelect').value === 'custom';
+    $('#presetRange').style.display = custom ? 'none' : 'inline';
+    $('#customRange').style.display = custom ? 'inline' : 'none';
+  };
+  syncPresetVisibility();
+  $('#presetSelect').addEventListener('change', syncPresetVisibility);
+
+  $('#generateBtn').addEventListener('click', () => {
+    const preset = $('#presetSelect').value;
+    const consultMinutes = Number($('#consultMinutes').value) || 20;
+    let slots;
+    if (preset === 'custom') {
+      slots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
+    } else {
+      slots = buildPresetSlots({ preset, startTime: $('#presetStart').value || '09:00', periodCount: Number($('#periodCount').value) || 6, consultMinutes });
+    }
+    entry.preset = preset;
+    entry.duration_minutes = consultMinutes;
+    entry.slots = slots;
+    renderEditGrid();
+  });
+  $('#bulkOpenBtn').addEventListener('click', () => {
+    entry.slots.forEach(s => { if (!s.booking) { s.is_open = true; s.mode = 'both'; } });
+    renderEditGrid();
+  });
+  $('#bulkCloseBtn').addEventListener('click', () => {
+    entry.slots.forEach(s => { if (!s.booking) s.is_open = false; });
+    renderEditGrid();
+  });
+  $('#saveDateBtn').addEventListener('click', saveAvailability);
+
+  renderEditGrid();
+}
+
+function renderEditGrid() {
+  const entry = teacherState.dates.get(teacherState.editingDate);
+  const container = $('#editGrid');
+  container.innerHTML = `<div class="cb-title" style="color:var(--chalk);opacity:.85;font-size:13px;margin-bottom:14px;">${teacherState.editingDate} (이 기간 전체에 똑같이 적용됩니다)</div>`;
+
+  for (const group of groupByPeriod(entry.slots)) {
+    const block = el(`<div class="period-group"></div>`);
+    if (group.period) {
+      block.innerHTML = `<div class="period-label"><strong style="color:var(--chalk);">${group.period}교시</strong><span style="color:var(--chalk-dim);">${group.period_range}</span></div>`;
+    }
+    const grid = document.createElement('div');
+    block.appendChild(grid);
+    container.appendChild(block);
+    renderEditingSlotGrid(grid, group.slots, {
+      onToggleOpen: (slot) => {
+        if (slot.is_open) { slot.is_open = false; }
+        else { slot.is_open = true; if (!slot.mode) slot.mode = 'both'; }
+        renderEditGrid();
+      },
+      onMethodToggle: (slot, method) => {
+        const modes = new Set(slot.mode === 'both' ? ['in_person', 'phone'] : slot.mode ? [slot.mode] : []);
+        if (modes.has(method)) modes.delete(method); else modes.add(method);
+        if (modes.size === 0) { slot.mode = 'both'; slot.is_open = false; }
+        else { slot.mode = modes.size === 2 ? 'both' : [...modes][0]; slot.is_open = true; }
+        renderEditGrid();
+      },
+    });
+  }
+
+  renderTeacherBookingList();
+}
+
+function renderTeacherBookingList() {
+  const entry = teacherState.dates.get(teacherState.editingDate);
+  const listEl = $('#ta-bookingList');
+  const booked = entry.slots.filter(s => s.booking).sort((a, b) => a.start_time.localeCompare(b.start_time));
+  if (booked.length === 0) {
+    listEl.innerHTML = '<p class="hint">이 날짜엔 아직 신청이 없어요.</p>';
+    return;
+  }
+  listEl.innerHTML = `<h3>이 날짜 신청 목록</h3>` + booked.map(s => `
+    <div class="booking-item">
+      <div class="booking-item-head">
+        <div>
+          <div class="booking-item-title">${escapeHtml(s.booking.student_number)}번 ${escapeHtml(s.booking.student_name)}</div>
+          <div class="booking-item-time">📅 ${s.start_time}</div>
+        </div>
+      </div>
+      <div class="booking-item-meta"><strong>학부모</strong> ${escapeHtml(s.booking.parent_name)} · ${escapeHtml(s.booking.parent_phone)}</div>
+      <div>${s.booking.mode === 'phone' ? '<span class="tag method-phone">📞 전화</span>' : '<span class="tag method-visit">🏫 방문</span>'}${(s.booking.topics || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
+      ${s.booking.notes ? `<div style="background:var(--disabled);padding:10px;border-radius:8px;font-size:13px;margin-top:6px;white-space:pre-wrap;">${escapeHtml(s.booking.notes)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function saveAvailability() {
+  const entry = teacherState.dates.get(teacherState.editingDate);
+  const allDates = [...teacherState.dates.keys()];
+  const strippedSlots = entry.slots.map(({ start_time, mode, is_open, period, period_range }) => ({ start_time, mode, is_open, period, period_range }));
+  try {
+    for (const d of allDates) {
+      await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, entry.preset, entry.duration_minutes, strippedSlots);
+    }
+    await loadTeacherSchedule();
+    renderAvailabilityEditor();
+    toast(`${allDates.length}개 날짜에 저장했어요`);
+    await maybePublish();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function maybePublish() {
+  if (teacherState.parentCode) return;
+  try {
+    const code = await db.publishPage(teacherState.pageId, teacherState.adminCode);
+    teacherState.parentCode = code;
+    toast(`학부모 공유 코드가 만들어졌어요: ${code}`);
+  } catch (err) { /* 다음 저장 때 다시 시도 */ }
+}
+
+function openBookingsList() {
+  setView('teacher-bookings', () => {
+    $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>예약 현황 로드 중...</div>`;
+    loadTeacherSchedule().then(renderBookingsList).catch(err => {
+      $('#main').innerHTML = `<div class="card"><p>${escapeHtml(err.message)}</p></div>`;
+    });
+  });
+}
+
+function renderBookingsList() {
+  const today = formatLocalDate(new Date());
+  const bookings = [];
+  for (const [date, entry] of teacherState.dates) {
+    for (const s of entry.slots) {
+      if (s.booking) bookings.push({ date, slot_id: s.slot_id, start_time: s.start_time, ...s.booking });
+    }
+  }
+  bookings.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.start_time.localeCompare(b.start_time)));
+  const upcoming = bookings.filter(b => b.date >= today);
+  const past = bookings.filter(b => b.date < today);
+
+  const renderOne = b => `
+    <div class="booking-item">
+      <div class="booking-item-head">
+        <div>
+          <div class="booking-item-title">${escapeHtml(b.student_number)}번 ${escapeHtml(b.student_name)}</div>
+          <div class="booking-item-time">📅 ${b.date} · ${b.start_time}</div>
+        </div>
+        <button class="btn btn-danger" style="padding:6px 10px;font-size:12px;" data-slot="${b.slot_id}" data-name="${escapeHtml(b.student_name)}">취소</button>
+      </div>
+      <div class="booking-item-meta"><strong>학부모</strong> ${escapeHtml(b.parent_name)} · ${escapeHtml(b.parent_phone)}</div>
+      <div>${b.mode === 'phone' ? '<span class="tag method-phone">📞 전화</span>' : '<span class="tag method-visit">🏫 방문</span>'}${(b.topics || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
+      ${b.notes ? `<div style="background:var(--disabled);padding:10px;border-radius:8px;font-size:13px;margin-top:6px;white-space:pre-wrap;">${escapeHtml(b.notes)}</div>` : ''}
+    </div>
+  `;
+
+  $('#main').innerHTML = `
+    <div class="card">
+      <h2>📅 예약 현황</h2>
+      <p class="subtitle">총 ${bookings.length}건 (다가오는 예약 ${upcoming.length}건)</p>
+      <h3 style="margin-top:10px;">🔵 다가오는 예약</h3>
+      ${upcoming.length === 0 ? '<div class="empty-state" style="padding:24px;"><p>예약된 상담이 없습니다</p></div>' : upcoming.map(renderOne).join('')}
+      ${past.length > 0 ? `<h3 style="margin-top:22px;color:var(--text-muted);">📁 지난 예약 (${past.length})</h3>${past.map(renderOne).join('')}` : ''}
+    </div>
+  `;
+  $$('#main button[data-slot]').forEach(btn => {
+    btn.addEventListener('click', () => teacherCancelBk(btn.dataset.slot, btn.dataset.name));
+  });
+}
+
+async function teacherCancelBk(slotId, studentName) {
+  if (!confirm(`${studentName} 학생의 예약을 취소하시겠습니까?`)) return;
+  try {
+    await db.teacherCancelBooking(teacherState.pageId, teacherState.adminCode, slotId);
+    await loadTeacherSchedule();
+    toast('취소되었습니다');
+    renderBookingsList();
+  } catch (err) { toast(err.message); }
+}
+
+/*****************************************************
+ * 초기화
+ *****************************************************/
+window.goHome = goHome;
+window.goBack = goBack;
+window.startParent = startParent;
+window.startTeacher = startTeacher;
+window.openAvailabilityEditor = openAvailabilityEditor;
+window.openBookingsList = openBookingsList;
+
+(function init() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  if (code) {
+    $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>시간표 로드 중...</div>`;
+    loadParentSchedule(code).then(renderParentTimetableView).catch(err => {
+      toast(err.message);
+      renderHome();
+    });
+  } else {
+    renderHome();
+  }
+})();
+</script>
 </body>
 </html>
