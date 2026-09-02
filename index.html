@@ -9,7 +9,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo" onclick="goHome()"><span>📌</span>붙임상담소</div>
+    <div class="logo" onclick="goHome()"><span>🧷</span>붙임상담소</div>
     <div class="header-actions">
       <button class="back-btn" id="backBtn" onclick="goBack()" style="display:none;">&larr; 뒤로</button>
       <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">🎓 선생님이신가요</button>
@@ -22,14 +22,28 @@
 <script type="module">
 import { db } from './shared/db.js';
 import { escapeHtml } from './shared/escape.js';
-import { buildPresetSlots, buildCustomSlots } from './shared/timetable-presets.js';
-import { renderParentSlotGrid, renderEditingSlotGrid, peelPostit, groupByPeriod } from './shared/chalkboard.js';
+import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots, rebuildPeriod, classMinutesFor } from './shared/timetable-presets.js';
+import { renderParentSlotGrid, peelPostit, groupByPeriod } from './shared/chalkboard.js';
 
 /*****************************************************
  * 공용 유틸
  *****************************************************/
 const PURPOSES = ['생활태도', '인성', '학업성취 및 성적', '진로진학', '특기적성', '교우관계'];
 const MODE_LABEL = { phone: '전화', in_person: '방문' };
+const SCHOOL_LEVEL_SUFFIX = { elementary: '초등학교', middle: '중학교', high: '고등학교' };
+const SCHOOL_LEVEL_TO_PRESET = { elementary: 'elementary', middle: 'middle', high: 'high' };
+
+function gradeClassLabel(grade, teacherClass) {
+  return `${escapeHtml(String(grade ?? ''))}학년 ${escapeHtml(String(teacherClass ?? ''))}반`;
+}
+function plainGradeClass(grade, teacherClass) {
+  return `${grade ?? ''}학년 ${teacherClass ?? ''}반`;
+}
+function periodDisplay(slot) {
+  if (slot.period_label) return ` (${escapeHtml(slot.period_label)})`;
+  if (slot.period) return ` (${slot.period}교시)`;
+  return '';
+}
 
 function $(sel, parent) { return (parent || document).querySelector(sel); }
 function $$(sel, parent) { return Array.from((parent || document).querySelectorAll(sel)); }
@@ -102,7 +116,7 @@ function renderHome() {
   setView('home', () => {
     $('#main').innerHTML = `
       <div class="home-title">
-        <h1>📌 붙임상담소</h1>
+        <h1>🧷 붙임상담소</h1>
         <p>칠판에 포스트잇 붙이듯, 학부모 상담을 예약해요</p>
       </div>
       <div class="home-choices">
@@ -168,7 +182,7 @@ function renderParentTimetableView() {
   setView('parent-timetable', () => {
     $('#main').innerHTML = `
       <div class="card">
-        <h2>${escapeHtml(data.grade || '')} ${escapeHtml(data.teacher_class || '')} · ${escapeHtml(data.teacher_name)} 선생님</h2>
+        <h2>${gradeClassLabel(data.grade, data.teacher_class)} · ${escapeHtml(data.teacher_name)} 선생님</h2>
         <p class="subtitle">상담 신청 시간표예요</p>
 
         ${data.dates.length === 0 ? '<div class="empty-state"><div class="big">📭</div><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
@@ -212,7 +226,9 @@ function renderParentTimetableBody() {
   area.innerHTML = `<div class="cb-title" style="color:var(--chalk);opacity:.85;font-size:13px;margin-bottom:14px;">${dateEntry.date}</div>`;
   for (const group of groupByPeriod(dateEntry.slots)) {
     const block = el(`<div class="period-group"></div>`);
-    if (group.period) {
+    if (group.period_label) {
+      block.innerHTML = `<div class="period-label"><strong style="color:var(--chalk);">${escapeHtml(group.period_label)}</strong></div>`;
+    } else if (group.period) {
       block.innerHTML = `<div class="period-label"><strong style="color:var(--chalk);">${group.period}교시</strong><span style="color:var(--chalk-dim);">${group.period_range}</span></div>`;
     }
     const grid = document.createElement('div');
@@ -231,7 +247,7 @@ function renderParentTimetableBody() {
 function openBookingModal(slot, dateEntry) {
   const page = parentState.pageData;
   const endTime = addMinutes(slot.start_time.slice(0, 5), dateEntry.duration_minutes || 20);
-  const periodText = slot.period ? ` (${slot.period}교시)` : '';
+  const periodText = periodDisplay(slot);
   const allowedModes = slot.mode === 'both' ? ['in_person', 'phone'] : [slot.mode];
 
   const methodChoices = allowedModes.map(m =>
@@ -247,7 +263,7 @@ function openBookingModal(slot, dateEntry) {
           <button class="modal-close" id="bookClose">✕</button>
         </div>
         <div class="booking-summary">
-          <strong>${escapeHtml(page.grade || '')} ${escapeHtml(page.teacher_class || '')}</strong><br>
+          <strong>${gradeClassLabel(page.grade, page.teacher_class)}</strong><br>
           ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)} ~ ${endTime}
         </div>
         <div class="field">
@@ -335,7 +351,7 @@ async function submitBooking(slot, dateEntry, bg) {
 
   try {
     const page = parentState.pageData;
-    const className = `${page.grade || ''} ${page.teacher_class || ''}`.trim();
+    const className = plainGradeClass(page.grade, page.teacher_class);
     const cancelToken = await db.bookSlot(
       parentState.parentCode, slot.slot_id,
       num, sname, className, pname, pphone, pw, purposes, content, method
@@ -354,14 +370,14 @@ async function submitBooking(slot, dateEntry, bg) {
 function showBookingSuccess(slot, dateEntry, studentName, method) {
   setView('parent-done', () => {
     const page = parentState.pageData;
-    const periodText = slot.period ? ` (${slot.period}교시)` : '';
+    const periodText = periodDisplay(slot);
     $('#main').innerHTML = `
       <div class="card" style="text-align:center;padding:36px 22px;">
         <div style="font-size:56px;margin-bottom:14px;">✅</div>
         <h1 style="font-size:20px;">예약이 완료되었어요!</h1>
         <p class="subtitle">선생님께 신청 내용이 전달됩니다</p>
         <div style="background:var(--primary-soft);padding:16px;border-radius:12px;text-align:left;margin:16px 0;">
-          <div style="margin-bottom:6px;"><strong>선생님</strong> · ${escapeHtml(page.grade || '')} ${escapeHtml(page.teacher_class || '')} ${escapeHtml(page.teacher_name)}</div>
+          <div style="margin-bottom:6px;"><strong>선생님</strong> · ${gradeClassLabel(page.grade, page.teacher_class)} ${escapeHtml(page.teacher_name)}</div>
           <div style="margin-bottom:6px;"><strong>학생</strong> · ${escapeHtml(studentName)}</div>
           <div style="margin-bottom:6px;"><strong>일시</strong> · ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}</div>
           <div><strong>상담 방법</strong> · ${MODE_LABEL[method]}</div>
@@ -381,7 +397,7 @@ function showBookingSuccess(slot, dateEntry, studentName, method) {
 function openCancelModal(slot, dateEntry, slotEl) {
   const ref = slot.booking_ref;
   if (!ref?.cancel_token) return toast('이 예약은 취소 정보를 불러올 수 없습니다.');
-  const periodText = slot.period ? ` (${slot.period}교시)` : '';
+  const periodText = periodDisplay(slot);
   const page = parentState.pageData;
 
   const bg = el(`
@@ -392,7 +408,7 @@ function openCancelModal(slot, dateEntry, slotEl) {
           <button class="modal-close" id="cancelClose">✕</button>
         </div>
         <div class="booking-summary">
-          <strong>${escapeHtml(page.grade || '')} ${escapeHtml(page.teacher_class || '')}</strong><br>
+          <strong>${gradeClassLabel(page.grade, page.teacher_class)}</strong><br>
           ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}<br>
           예약자: <strong>${escapeHtml(ref.student_number)}번</strong>
         </div>
@@ -442,54 +458,138 @@ async function doCancelBooking(slot, slotEl, bg) {
  * 담임 플로우
  *****************************************************/
 let teacherState = {
-  pageId: null, adminCode: null, teacherName: '', grade: '', teacherClass: '',
+  pageId: null, adminCode: null, teacherName: '', school: '', schoolLevel: '', grade: '', teacherClass: '',
   parentCode: null, dates: new Map(), editingDate: null,
 };
 
 function startTeacher() {
+  setView('teacher-choice', () => {
+    $('#main').innerHTML = `
+      <div class="home-title">
+        <h1 style="font-size:20px;">🎓 선생님이신가요?</h1>
+      </div>
+      <div class="home-choices">
+        <div class="home-choice" id="tc-login">
+          <div class="icon">🔑</div>
+          <div class="txt"><strong>로그인</strong><span>이미 등록했어요</span></div>
+        </div>
+        <div class="home-choice" id="tc-register">
+          <div class="icon">🆕</div>
+          <div class="txt"><strong>아이디 등록</strong><span>처음 사용해요</span></div>
+        </div>
+      </div>
+    `;
+    $('#tc-login').addEventListener('click', startTeacherLogin);
+    $('#tc-register').addEventListener('click', startTeacherRegister);
+  });
+}
+
+function startTeacherLogin() {
   setView('teacher-login', () => {
     $('#main').innerHTML = `
       <div class="card">
-        <h2>🎓 선생님 등록 · 로그인</h2>
-        <p class="subtitle">처음이면 새로 등록되고, 두 번째부터는 같은 정보로 로그인돼요.</p>
-        <div class="info-box">
-          <span class="ico">⚠️</span>
-          <div>코드는 나중에 다시 들어올 때 필요해요. 꼭 기억해두세요!</div>
-        </div>
+        <h2>🔑 로그인</h2>
+        <p class="subtitle">등록할 때 입력한 이름과 코드를 입력해주세요.</p>
         <div class="field"><label>이름</label><input type="text" id="tl-name" placeholder="예: 김민준"></div>
-        <div class="field"><label>코드 (4자 이상)</label><input type="password" id="tl-code" placeholder="나만 아는 코드"></div>
-        <div class="row">
-          <div class="field"><label>학교</label><input type="text" id="tl-school" placeholder="예: 신장고등학교"></div>
-          <div class="field"><label>학년</label><input type="text" id="tl-grade" placeholder="예: 2학년"></div>
-        </div>
-        <div class="field"><label>반</label><input type="text" id="tl-class" placeholder="예: 3반"></div>
-        <button class="btn btn-primary btn-block" id="tl-submit">시작하기</button>
+        <div class="field"><label>코드</label><input type="password" id="tl-code" placeholder="등록할 때 정한 코드"></div>
+        <button class="btn btn-primary btn-block" id="tl-submit">로그인</button>
       </div>
     `;
-    $('#tl-submit', $('#main')).addEventListener('click', doTeacherLogin);
+    $('#tl-name').focus();
+    $('#tl-code').addEventListener('keypress', e => { if (e.key === 'Enter') doTeacherLogin(); });
+    $('#tl-submit').addEventListener('click', doTeacherLogin);
   });
 }
 
 async function doTeacherLogin() {
   const name = $('#tl-name').value.trim();
   const code = $('#tl-code').value;
-  const school = $('#tl-school').value.trim();
-  const grade = $('#tl-grade').value.trim();
-  const teacherClass = $('#tl-class').value.trim();
-  if (!name || !code || !school || !grade || !teacherClass) return toast('모든 항목을 입력해주세요');
+  if (!name || !code) return toast('이름과 코드를 모두 입력해주세요');
 
   const btn = $('#tl-submit');
   btn.disabled = true; btn.textContent = '확인 중...';
   try {
-    const pageId = await db.getOrCreateTeacher(name, code, school, grade, teacherClass);
+    const res = await db.teacherLogin(name, code);
+    teacherState.pageId = res.page_id;
+    teacherState.adminCode = code;
+    teacherState.school = res.school;
+    teacherState.schoolLevel = res.school_level;
+    teacherState.grade = res.grade;
+    teacherState.teacherClass = res.teacher_class;
+    await loadTeacherSchedule();
+    renderTeacherDashboard();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '로그인';
+    toast(err.message);
+  }
+}
+
+function startTeacherRegister() {
+  setView('teacher-register', () => {
+    $('#main').innerHTML = `
+      <div class="card">
+        <h2>🆕 아이디 등록</h2>
+        <div class="info-box">
+          <span class="ico">⚠️</span>
+          <div>코드는 나중에 로그인할 때 필요해요. 꼭 기억해두세요!</div>
+        </div>
+        <div class="field"><label>이름</label><input type="text" id="tr-name" placeholder="예: 김민준"></div>
+        <div class="field"><label>코드 (4자리 이상)</label><input type="password" id="tr-code" placeholder="나만 아는 코드"></div>
+        <div class="field">
+          <label>학교</label>
+          <div class="row">
+            <input type="text" id="tr-school" placeholder="예: 신장" style="flex:2;">
+            <div class="choice-group" id="tr-level-group" style="flex:3;">
+              <div class="choice" data-level="elementary">초등학교</div>
+              <div class="choice" data-level="middle">중학교</div>
+              <div class="choice" data-level="high">고등학교</div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>학년</label><input type="number" id="tr-grade" min="1" max="6" placeholder="예: 2"></div>
+          <div class="field"><label>반</label><input type="number" id="tr-class" min="1" max="20" placeholder="예: 3"></div>
+        </div>
+        <button class="btn btn-primary btn-block" id="tr-submit">등록하기</button>
+      </div>
+    `;
+    let level = null;
+    $$('#tr-level-group .choice').forEach(c => {
+      c.addEventListener('click', () => {
+        level = c.dataset.level;
+        $$('#tr-level-group .choice').forEach(x => x.classList.toggle('selected', x === c));
+      });
+    });
+    $('#tr-submit').addEventListener('click', () => doTeacherRegister(() => level));
+  });
+}
+
+async function doTeacherRegister(getLevel) {
+  const name = $('#tr-name').value.trim();
+  const code = $('#tr-code').value;
+  const schoolPrefix = $('#tr-school').value.trim();
+  const level = getLevel();
+  const grade = $('#tr-grade').value.trim();
+  const teacherClass = $('#tr-class').value.trim();
+  if (!name || !code || !schoolPrefix || !level || !grade || !teacherClass) {
+    return toast('모든 항목을 입력해주세요');
+  }
+  const school = `${schoolPrefix}${SCHOOL_LEVEL_SUFFIX[level]}`;
+
+  const btn = $('#tr-submit');
+  btn.disabled = true; btn.textContent = '등록 중...';
+  try {
+    const pageId = await db.getOrCreateTeacher(name, code, school, level, grade, teacherClass);
     teacherState.pageId = pageId;
     teacherState.adminCode = code;
+    teacherState.school = school;
+    teacherState.schoolLevel = level;
     teacherState.grade = grade;
     teacherState.teacherClass = teacherClass;
     await loadTeacherSchedule();
     renderTeacherDashboard();
   } catch (err) {
-    btn.disabled = false; btn.textContent = '시작하기';
+    btn.disabled = false; btn.textContent = '등록하기';
     toast(err.message);
   }
 }
@@ -509,7 +609,7 @@ function renderTeacherDashboard() {
     const t = teacherState;
     $('#main').innerHTML = `
       <div class="card">
-        <h2>${escapeHtml(t.grade)} ${escapeHtml(t.teacherClass)} · ${escapeHtml(t.teacherName)} 선생님</h2>
+        <h2>${escapeHtml(t.school)} ${gradeClassLabel(t.grade, t.teacherClass)} · ${escapeHtml(t.teacherName)} 선생님</h2>
         <p class="subtitle">환영합니다 👋</p>
         ${t.parentCode ? `
           <div class="info-box">
@@ -580,9 +680,10 @@ function createDateRange() {
   if (startVal > endVal) return toast('종료일이 시작일보다 빠를 수 없어요');
   const days = weekdaysBetween(startVal, endVal);
   if (days.length === 0) return toast('그 사이에 평일이 없어요');
+  const defaultPreset = SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
   for (const d of days) {
     if (!teacherState.dates.has(d)) {
-      teacherState.dates.set(d, { date: d, preset: 'middle', duration_minutes: 20, slots: [] });
+      teacherState.dates.set(d, { date: d, preset: defaultPreset, duration_minutes: 20, slots: [] });
     }
   }
   teacherState.editingDate = days[0];
@@ -613,6 +714,7 @@ function renderAvailabilityDateEditor() {
   editor.innerHTML = `
     <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap;align-items:center;">
       <select id="presetSelect">
+        <option value="elementary">초등학교형 (40분 수업)</option>
         <option value="middle">중학교형 (45분 수업)</option>
         <option value="high">고등학교형 (50분 수업)</option>
         <option value="custom">직접 설정</option>
@@ -628,16 +730,22 @@ function renderAvailabilityDateEditor() {
       상담시간(분) <input type="number" id="consultMinutes" min="5" max="120" value="${entry.duration_minutes || 20}" style="width:60px;">
       <button class="btn btn-secondary" id="generateBtn">시간표 만들기</button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
       <button class="btn btn-secondary" style="flex:1;" id="bulkOpenBtn">전체 열기 (방문·전화)</button>
       <button class="btn btn-ghost" style="flex:1;" id="bulkCloseBtn">전체 닫기</button>
+    </div>
+    <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin-bottom:10px;">➕ 방과후 상담 추가</button>
+    <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:14px;">
+      <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+      <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+      <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
     </div>
     <div class="cb-wrap" id="editGrid"></div>
     <button class="btn btn-primary btn-block btn-lg" style="margin-top:16px;" id="saveDateBtn">💾 이 기간 전체에 저장</button>
     <div id="ta-bookingList" style="margin-top:16px;"></div>
   `;
 
-  $('#presetSelect').value = entry.preset || 'middle';
+  $('#presetSelect').value = entry.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
   const syncPresetVisibility = () => {
     const custom = $('#presetSelect').value === 'custom';
     $('#presetRange').style.display = custom ? 'none' : 'inline';
@@ -668,38 +776,117 @@ function renderAvailabilityDateEditor() {
     entry.slots.forEach(s => { if (!s.booking) s.is_open = false; });
     renderEditGrid();
   });
+  $('#afterschoolToggle').addEventListener('click', () => {
+    const form = $('#afterschoolForm');
+    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+  });
+  $('#afterAdd').addEventListener('click', () => {
+    const startTime = $('#afterStart').value;
+    const endTime = $('#afterEnd').value;
+    if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
+    const consultMinutes = entry.duration_minutes || 20;
+    const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
+    const existingStarts = new Set(entry.slots.map(s => s.start_time));
+    const toAdd = newSlots.filter(s => !existingStarts.has(s.start_time));
+    if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
+    entry.slots.push(...toAdd);
+    $('#afterschoolForm').style.display = 'none';
+    renderEditGrid();
+  });
   $('#saveDateBtn').addEventListener('click', saveAvailability);
 
+  renderEditGrid();
+}
+
+function createTtSlot(slot, durationMinutes, handlers) {
+  const start = slot.start_time.slice(0, 5);
+  const end = addMinutes(start, durationMinutes || 20);
+
+  if (slot.booking) {
+    return el(`
+      <div class="tt-slot tt-slot--booked">
+        <div class="tt-slot-time">${start}~${end}</div>
+        <div class="tt-slot-postit">${escapeHtml(slot.booking.student_number)}번</div>
+      </div>
+    `);
+  }
+
+  const modes = slot.mode === 'both' ? ['in_person', 'phone'] : slot.mode ? [slot.mode] : ['in_person', 'phone'];
+  const node = el(`
+    <div class="tt-slot ${slot.is_open ? 'tt-slot--open' : 'tt-slot--off'}">
+      <div class="tt-slot-time">${start}~${end}</div>
+      <div class="tt-slot-methods">
+        <button type="button" class="tt-method m-visit ${modes.includes('in_person') ? 'on' : ''}" data-m="in_person">🏫 방문</button>
+        <button type="button" class="tt-method m-phone ${modes.includes('phone') ? 'on' : ''}" data-m="phone">📞 전화</button>
+      </div>
+    </div>
+  `);
+  node.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tt-method');
+    if (btn) { e.stopPropagation(); handlers.onMethodToggle(slot, btn.dataset.m); }
+    else handlers.onToggleOpen(slot);
+  });
+  return node;
+}
+
+function regeneratePeriod(entry, group, newStartTime) {
+  if (group.slots.some(s => s.booking)) {
+    return toast('이미 예약이 있는 교시는 시간을 바꿀 수 없어요. 예약을 먼저 취소해주세요.');
+  }
+  const classMinutes = classMinutesFor(entry.preset);
+  if (!classMinutes || !newStartTime) return toast('이 시간표 종류에서는 교시 시간을 따로 바꿀 수 없어요.');
+  const freshSlots = rebuildPeriod(newStartTime, classMinutes, entry.duration_minutes || 20, group.period);
+  entry.slots = entry.slots.filter(s => s.period !== group.period).concat(freshSlots);
   renderEditGrid();
 }
 
 function renderEditGrid() {
   const entry = teacherState.dates.get(teacherState.editingDate);
   const container = $('#editGrid');
-  container.innerHTML = `<div class="cb-title" style="color:var(--chalk);opacity:.85;font-size:13px;margin-bottom:14px;">${teacherState.editingDate} (이 기간 전체에 똑같이 적용됩니다)</div>`;
+  container.innerHTML = '';
+  container.appendChild(el(`<div class="cb-title" style="color:var(--chalk);opacity:.85;font-size:13px;margin-bottom:14px;">${teacherState.editingDate} (이 기간 전체에 똑같이 적용됩니다)</div>`));
+
+  const handlers = {
+    onToggleOpen: (slot) => {
+      if (slot.is_open) { slot.is_open = false; }
+      else { slot.is_open = true; if (!slot.mode) slot.mode = 'both'; }
+      renderEditGrid();
+    },
+    onMethodToggle: (slot, method) => {
+      const modes = new Set(slot.mode === 'both' ? ['in_person', 'phone'] : slot.mode ? [slot.mode] : []);
+      if (modes.has(method)) modes.delete(method); else modes.add(method);
+      if (modes.size === 0) { slot.mode = 'both'; slot.is_open = false; }
+      else { slot.mode = modes.size === 2 ? 'both' : [...modes][0]; slot.is_open = true; }
+      renderEditGrid();
+    },
+  };
 
   for (const group of groupByPeriod(entry.slots)) {
-    const block = el(`<div class="period-group"></div>`);
+    const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
+    const firstStart = group.slots[0]?.start_time?.slice(0, 5) || '09:00';
+    const row = document.createElement('div');
+    row.className = 'period-table-row';
+    row.appendChild(el(`
+      <div class="period-table-head">
+        <strong>${escapeHtml(headLabel)}</strong>
+        ${group.period ? `<input type="time" class="period-start-input" value="${firstStart}">
+          <button type="button" class="btn btn-secondary period-regen-btn" style="padding:6px 10px;font-size:12px;">이 교시만 다시 배치</button>` : ''}
+        ${group.period_range ? `<span class="hint-inline">기존 ${group.period_range}</span>` : ''}
+      </div>
+    `));
     if (group.period) {
-      block.innerHTML = `<div class="period-label"><strong style="color:var(--chalk);">${group.period}교시</strong><span style="color:var(--chalk-dim);">${group.period_range}</span></div>`;
+      const head = row.querySelector('.period-table-head');
+      head.querySelector('.period-regen-btn').addEventListener('click', () => {
+        regeneratePeriod(entry, group, head.querySelector('.period-start-input').value);
+      });
     }
-    const grid = document.createElement('div');
-    block.appendChild(grid);
-    container.appendChild(block);
-    renderEditingSlotGrid(grid, group.slots, {
-      onToggleOpen: (slot) => {
-        if (slot.is_open) { slot.is_open = false; }
-        else { slot.is_open = true; if (!slot.mode) slot.mode = 'both'; }
-        renderEditGrid();
-      },
-      onMethodToggle: (slot, method) => {
-        const modes = new Set(slot.mode === 'both' ? ['in_person', 'phone'] : slot.mode ? [slot.mode] : []);
-        if (modes.has(method)) modes.delete(method); else modes.add(method);
-        if (modes.size === 0) { slot.mode = 'both'; slot.is_open = false; }
-        else { slot.mode = modes.size === 2 ? 'both' : [...modes][0]; slot.is_open = true; }
-        renderEditGrid();
-      },
-    });
+    const slotsWrap = document.createElement('div');
+    slotsWrap.className = 'period-table-slots';
+    for (const slot of group.slots) {
+      slotsWrap.appendChild(createTtSlot(slot, entry.duration_minutes, handlers));
+    }
+    row.appendChild(slotsWrap);
+    container.appendChild(row);
   }
 
   renderTeacherBookingList();
@@ -731,7 +918,7 @@ function renderTeacherBookingList() {
 async function saveAvailability() {
   const entry = teacherState.dates.get(teacherState.editingDate);
   const allDates = [...teacherState.dates.keys()];
-  const strippedSlots = entry.slots.map(({ start_time, mode, is_open, period, period_range }) => ({ start_time, mode, is_open, period, period_range }));
+  const strippedSlots = entry.slots.map(({ start_time, mode, is_open, period, period_range, period_label }) => ({ start_time, mode, is_open, period, period_range, period_label }));
   try {
     for (const d of allDates) {
       await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, entry.preset, entry.duration_minutes, strippedSlots);

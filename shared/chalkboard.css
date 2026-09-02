@@ -200,27 +200,52 @@ textarea { resize:vertical; min-height:90px; }
 .period-label { display:flex; justify-content:space-between; align-items:baseline; padding:4px 2px; margin-bottom:8px; }
 .period-label strong { font-size:13px; color:var(--chalk); }
 .period-label span { font-size:12px; color:var(--chalk-dim); opacity:.8; }
-.cb-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(88px,1fr)); gap:14px; }
+.cb-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px,1fr)); gap:14px; }
 .cb-slot {
-  position:relative; height:76px; border:2px dashed #6f8c78; border-radius:6px;
-  display:flex; align-items:center; justify-content:center; color:var(--chalk-dim); font-size:13px;
-  font-weight:500; cursor:pointer; user-select:none; text-align:center; padding:4px;
+  position:relative; min-height:82px; border:2px dashed #6f8c78; border-radius:8px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--chalk-dim); font-size:13px;
+  font-weight:500; cursor:pointer; user-select:none; text-align:center; padding:8px 6px; gap:5px;
 }
 .cb-slot:hover { border-color:#a8c4ae; }
 .cb-slot.cb-slot--open { border-color:var(--success); }
 .cb-slot.cb-slot--closed { opacity:.35; cursor:not-allowed; border-style:solid; }
-.cb-slot.cb-slot--off { opacity:.55; }
-.cb-slot .cb-time { opacity:.9; }
-.cb-slot .cb-methods { display:flex; gap:3px; justify-content:center; margin-top:4px; flex-wrap:wrap; }
-.cb-method-tag { font-size:9px; padding:2px 5px; border-radius:4px; background:rgba(255,255,255,.08); color:var(--chalk-dim); border:1px solid #6f8c78; }
-
-/* 담임 설정용: 칠판 위에서 방법 토글 */
-.cb-slot.editing .cb-method-checks { display:flex; gap:5px; justify-content:center; margin-top:4px; }
-.cb-method-check {
-  font-size:10px; padding:3px 7px; border-radius:5px; background:rgba(255,255,255,.06);
-  border:1px solid #6f8c78; color:var(--chalk-dim); cursor:pointer; user-select:none;
+.cb-slot .cb-time { opacity:.9; font-size:14px; }
+.cb-slot .cb-methods { display:flex; gap:5px; justify-content:center; flex-wrap:wrap; }
+.cb-method-tag {
+  font-size:11px; padding:3px 8px; border-radius:20px; font-weight:600;
+  background:rgba(255,255,255,.1); color:var(--chalk); border:1px solid #6f8c78;
 }
-.cb-method-check.on { background:var(--postit); color:var(--postit-text); border-color:var(--postit); font-weight:700; }
+.cb-method-tag.m-visit { background:rgba(240,182,110,.18); border-color:#e0b06e; color:#f0d6a8; }
+.cb-method-tag.m-phone { background:rgba(122,181,213,.18); border-color:#7ab5d5; color:#bfe0f0; }
+
+/* ---- 담임 설정: 진짜 시간표 형태 ---- */
+.period-table-row { margin-bottom:20px; }
+.period-table-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+.period-table-head strong { font-size:14px; color:var(--chalk); min-width:44px; }
+.period-table-head input[type="time"] { width:110px; padding:6px 8px; font-size:13px; }
+.period-table-head .hint-inline { font-size:11px; color:var(--chalk-dim); opacity:.8; }
+.period-table-slots { display:flex; gap:12px; flex-wrap:wrap; }
+.tt-slot {
+  background:rgba(255,255,255,.05); border:1.5px solid #4a6656; border-radius:10px;
+  padding:10px 12px; min-width:150px; display:flex; flex-direction:column; gap:8px;
+  cursor:pointer; user-select:none; transition:all .15s;
+}
+.tt-slot:hover { border-color:#a8c4ae; }
+.tt-slot.tt-slot--open { border-color:var(--success); background:rgba(79,162,122,.1); }
+.tt-slot.tt-slot--off { opacity:.55; }
+.tt-slot.tt-slot--booked { cursor:default; border-style:solid; border-color:var(--postit); background:rgba(255,226,122,.08); }
+.tt-slot-time { color:var(--chalk); font-size:13px; font-weight:600; }
+.tt-slot-methods { display:flex; gap:6px; flex-wrap:wrap; }
+.tt-method {
+  font-size:11px; padding:5px 10px; border-radius:20px; font-weight:600; cursor:pointer;
+  background:rgba(255,255,255,.06); border:1px solid #6f8c78; color:var(--chalk-dim); font-family:inherit;
+}
+.tt-method.on.m-visit { background:#f0b66e; color:#4a2f0a; border-color:#f0b66e; }
+.tt-method.on.m-phone { background:#7ab5d5; color:#0a2c3d; border-color:#7ab5d5; }
+.tt-slot-postit {
+  align-self:center; background:var(--postit); color:var(--postit-text); font-size:12px; font-weight:700;
+  padding:6px 12px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
 
 .postit {
   position:absolute; inset:6px; background:var(--postit); border-radius:2px;

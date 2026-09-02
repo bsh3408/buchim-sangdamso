@@ -5,7 +5,7 @@ const MODE_LABEL = { phone: '전화', in_person: '방문', both: '방문·전화
 
 function methodTagsHtml(mode) {
   const modes = mode === 'both' ? ['in_person', 'phone'] : [mode];
-  return `<div class="cb-methods">${modes.map(m => `<span class="cb-method-tag">${MODE_LABEL[m]}</span>`).join('')}</div>`;
+  return `<div class="cb-methods">${modes.map(m => `<span class="cb-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}">${MODE_LABEL[m]}</span>`).join('')}</div>`;
 }
 
 /** 학부모 시간표: 열림/예약됨/닫힘 3가지 상태로 칠판 칸을 그린다. */
@@ -38,49 +38,6 @@ export function renderParentSlotGrid(container, slots, handlers) {
   }
 }
 
-/** 담임 설정 화면: 칸을 누르면 열림/닫힘 토글, 방법 뱃지를 누르면 방문/전화 토글. */
-export function renderEditingSlotGrid(container, slots, handlers) {
-  container.innerHTML = '';
-  container.classList.add('cb-grid');
-  for (const slot of slots) {
-    const el = document.createElement('div');
-    el.className = 'cb-slot editing';
-    el.dataset.slotId = slot.slot_id ?? '';
-
-    if (slot.booking) {
-      el.classList.add('cb-slot--closed');
-      el.innerHTML = `
-        <span class="cb-time">${slot.start_time.slice(0, 5)}</span>
-        <div class="postit stuck">${escapeHtml(slot.booking.student_number)}번</div>
-      `;
-      container.appendChild(el);
-      continue;
-    }
-
-    if (slot.is_open) el.classList.add('cb-slot--open');
-    else el.classList.add('cb-slot--off');
-
-    const modes = slot.mode === 'both' ? ['in_person', 'phone'] : slot.mode ? [slot.mode] : ['in_person', 'phone'];
-    el.innerHTML = `
-      <span class="cb-time">${slot.start_time.slice(0, 5)}</span>
-      <div class="cb-method-checks">
-        <span class="cb-method-check ${modes.includes('in_person') ? 'on' : ''}" data-m="in_person">방문</span>
-        <span class="cb-method-check ${modes.includes('phone') ? 'on' : ''}" data-m="phone">전화</span>
-      </div>
-    `;
-    el.addEventListener('click', (e) => {
-      const checkEl = e.target.closest('.cb-method-check');
-      if (checkEl) {
-        e.stopPropagation();
-        handlers.onMethodToggle?.(slot, checkEl.dataset.m);
-      } else {
-        handlers.onToggleOpen?.(slot);
-      }
-    });
-    container.appendChild(el);
-  }
-}
-
 export function peelPostit(slotEl, onDone) {
   const postit = slotEl.querySelector('.postit');
   postit.classList.remove('stuck');
@@ -94,14 +51,16 @@ export function peelPostit(slotEl, onDone) {
   }, 550);
 }
 
-/** 슬롯을 교시 단위로 묶는다("직접 설정"으로 만든 슬롯은 period가 없어 한 묶음이 된다). */
+/** 슬롯을 교시 단위로 묶는다. "직접 설정"으로 만든 슬롯은 한 묶음, "방과후"로 추가한
+ * 슬롯은 period_label로 별도 묶음이 된다(둘 다 period가 없어서 겹치면 안 되기 때문). */
 export function groupByPeriod(slots) {
   const groups = [];
   const byKey = new Map();
-  for (const slot of slots) {
-    const key = slot.period ?? 'custom';
+  const sorted = [...slots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+  for (const slot of sorted) {
+    const key = slot.period_label ?? slot.period ?? 'custom';
     if (!byKey.has(key)) {
-      const group = { period: slot.period, period_range: slot.period_range, slots: [] };
+      const group = { period: slot.period, period_range: slot.period_range, period_label: slot.period_label, slots: [] };
       byKey.set(key, group);
       groups.push(group);
     }
