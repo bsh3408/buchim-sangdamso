@@ -616,11 +616,13 @@ function derivePatternFromDates() {
   // dateOpen 쪽 명시적인 값으로만 판단하므로, 여기서는 항상 닫힘을 기본값으로 둔다
   // (그렇지 않으면 기준으로 삼은 날짜의 상태가 다른 모든 날짜의 기본값으로 새어나간다).
   const base = entries[0];
+  const slots = base.slots.map(({ start_time, period, period_range, period_label }) =>
+    ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' }));
   teacherState.periodPattern = {
     preset: base.preset,
     duration_minutes: base.duration_minutes,
-    slots: base.slots.map(({ start_time, period, period_range, period_label }) =>
-      ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' })),
+    slots,
+    lunch: inferLunchFromSlots(slots, base.duration_minutes),
   };
 
   // dateOpen은 날짜 -> 상담 슬롯(시작 시각)마다 따로 상태를 기억한다. 한 교시 안에 상담이
@@ -634,6 +636,25 @@ function derivePatternFromDates() {
     }
   }
   teacherState.dateOpen = dateOpen;
+}
+
+/** 저장된 슬롯 시각만 보고 점심시간이 어디 있었는지 되짚는다(교시 사이 뜬 간격 중
+ * 가장 크면서, 평범한 쉬는시간(10분)보다 뚜렷하게 긴 곳). DB에는 점심시간을 따로
+ * 저장하지 않으므로, 새로고침 뒤 점심 줄을 다시 보여주려면 이렇게 역산해야 한다. */
+function inferLunchFromSlots(slots, durationMinutes) {
+  const groups = groupByPeriod(slots).filter(g => g.period);
+  if (groups.length < 2) return { enabled: false };
+  let best = null;
+  for (let i = 0; i < groups.length - 1; i++) {
+    const cur = groups[i];
+    const next = groups[i + 1];
+    const curEnd = hhmmToMinutes(cur.slots[cur.slots.length - 1].start_time.slice(0, 5)) + (durationMinutes || 20);
+    const nextStart = hhmmToMinutes(next.slots[0].start_time.slice(0, 5));
+    const gap = nextStart - curEnd;
+    if (!best || gap > best.gap) best = { gap, afterPeriod: cur.period };
+  }
+  if (best && best.gap >= 25) return { enabled: true, afterPeriod: best.afterPeriod, minutes: best.gap };
+  return { enabled: false };
 }
 
 function renderTeacherDashboard() {
@@ -708,6 +729,42 @@ async function toggleDate(dateStr) {
   renderAvailabilityEditor();
 }
 
+/** 폼에 입력된 값대로 교시 시간 구조(pattern.slots)를 다시 만든다. 점심시간을 드래그로
+ * 옮길 때도 "몇 교시 뒤" 값만 바꾼 뒤 이 함수를 다시 불러 재사용한다. */
+function runGenerate() {
+  const pattern = teacherState.periodPattern;
+  const preset = $('#presetSelect').value;
+  const consultMinutes = Number($('#consultMinutes').value) || 20;
+  let slots;
+  if (preset === 'custom') {
+    slots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
+    pattern.lunch = null;
+  } else {
+    const lunchEnabled = $('#lunchEnable').checked;
+    const lunchAfterPeriod = lunchEnabled ? (Number($('#lunchAfter').value) || null) : null;
+    const lunchMinutes = Number($('#lunchMinutes').value) || 50;
+    slots = buildPresetSlots({
+      preset, startTime: $('#presetStart').value || '09:00', periodCount: Number($('#periodCount').value) || 6,
+      consultMinutes, lunchAfterPeriod, lunchMinutes,
+    });
+    pattern.lunch = lunchAfterPeriod ? { enabled: true, afterPeriod: lunchAfterPeriod, minutes: lunchMinutes } : { enabled: false };
+  }
+  pattern.preset = preset;
+  pattern.duration_minutes = consultMinutes;
+  pattern.slots = slots;
+  renderPatternGrid();
+}
+
+/** 점심시간 줄을 다른 교시 사이로 옮긴다(드래그 앤 드롭으로 놓았을 때 호출). */
+function moveLunch(newAfterPeriod) {
+  const pattern = teacherState.periodPattern;
+  if (!pattern.lunch?.enabled || pattern.lunch.afterPeriod === newAfterPeriod) return;
+  const input = $('#lunchAfter');
+  if (input) input.value = newAfterPeriod;
+  runGenerate();
+  toast(`점심시간을 ${newAfterPeriod}교시 뒤로 옮겼어요`);
+}
+
 function renderAvailabilityPatternEditor() {
   const pattern = teacherState.periodPattern;
   const editor = $('#ta-editor');
@@ -733,23 +790,25 @@ function renderAvailabilityPatternEditor() {
       <div class="field"><label>상담시간(분)</label><input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}"></div>
 
       <label class="tt-lunch-toggle" for="lunchEnable">
-        <input type="checkbox" id="lunchEnable">
+        <input type="checkbox" id="lunchEnable" ${pattern.lunch?.enabled ? 'checked' : ''}>
         <span>🍱 점심시간 넣기</span>
       </label>
-      <div class="row" id="lunchControls" style="display:none;">
-        <div class="field"><label>몇 교시 뒤</label><input type="number" id="lunchAfter" min="1" max="10" value="4"></div>
-        <div class="field"><label>점심시간(분)</label><input type="number" id="lunchMinutes" min="10" max="120" value="50"></div>
+      <div class="row" id="lunchControls" style="display:${pattern.lunch?.enabled ? 'flex' : 'none'};">
+        <div class="field"><label>몇 교시 뒤</label><input type="number" id="lunchAfter" min="1" max="10" value="${pattern.lunch?.afterPeriod || 4}"></div>
+        <div class="field"><label>점심시간(분)</label><input type="number" id="lunchMinutes" min="10" max="120" value="${pattern.lunch?.minutes || 50}"></div>
+      </div>
+      <p class="hint" style="margin:2px 0 4px;">시간표를 만든 뒤엔 점심시간 줄을 손으로 눌러 끌면 다른 교시 사이로 옮길 수 있어요.</p>
+
+      <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin:8px 0;">➕ 방과후 상담 추가</button>
+      <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:10px;">
+        <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+        <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+        <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
       </div>
 
       <button class="btn btn-primary btn-block" id="generateBtn">📐 시간표 만들기</button>
     </div>
     <p class="hint" style="margin:10px 0 14px;">시간표를 만든 뒤 아래에서 교시를 누르면 세부 시간을 더 조정할 수 있어요.</p>
-    <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin-bottom:10px;">➕ 방과후 상담 추가</button>
-    <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:14px;">
-      <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
-      <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
-      <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
-    </div>
     <h3 style="margin-top:14px;">요일별 시간표 (칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요)</h3>
     <div id="weekdayGrid" style="margin-bottom:16px;"></div>
     <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">💾 고른 날짜에 저장</button>
@@ -767,25 +826,7 @@ function renderAvailabilityPatternEditor() {
     $('#lunchControls').style.display = $('#lunchEnable').checked ? 'flex' : 'none';
   });
 
-  $('#generateBtn').addEventListener('click', () => {
-    const preset = $('#presetSelect').value;
-    const consultMinutes = Number($('#consultMinutes').value) || 20;
-    let slots;
-    if (preset === 'custom') {
-      slots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
-    } else {
-      const lunchAfterPeriod = $('#lunchEnable').checked ? (Number($('#lunchAfter').value) || null) : null;
-      const lunchMinutes = Number($('#lunchMinutes').value) || 50;
-      slots = buildPresetSlots({
-        preset, startTime: $('#presetStart').value || '09:00', periodCount: Number($('#periodCount').value) || 6,
-        consultMinutes, lunchAfterPeriod, lunchMinutes,
-      });
-    }
-    pattern.preset = preset;
-    pattern.duration_minutes = consultMinutes;
-    pattern.slots = slots;
-    renderPatternGrid();
-  });
+  $('#generateBtn').addEventListener('click', runGenerate);
   $('#afterschoolToggle').addEventListener('click', () => {
     const form = $('#afterschoolForm');
     form.style.display = form.style.display === 'none' ? 'flex' : 'none';
@@ -880,6 +921,10 @@ function renderPatternGrid() {
     return;
   }
 
+  const periodNumbers = groups.map(g => g.period).filter(Boolean);
+  const maxPeriod = periodNumbers.length ? Math.max(...periodNumbers) : 0;
+  const lunch = pattern.lunch?.enabled ? pattern.lunch : null;
+
   const sortedWeekKeys = [...weeks.keys()].sort();
   let html = '';
   sortedWeekKeys.forEach((wk, idx) => {
@@ -932,11 +977,22 @@ function renderPatternGrid() {
         }
         html += '</tr>';
       });
+
+      if (group.period && group.period < maxPeriod) {
+        if (lunch && lunch.afterPeriod === group.period) {
+          html += `<tr class="wd-lunch-row" data-after-period="${group.period}">
+            <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lunch.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
+          </tr>`;
+        } else if (lunch) {
+          html += `<tr class="wd-lunch-dropzone" data-after-period="${group.period}"><td colspan="6"><div class="wd-lunch-dropzone-bar"></div></td></tr>`;
+        }
+      }
     }
     html += '</tbody></table></div>';
   });
   container.innerHTML = html;
   teacherState.justChangedKey = null;
+  wireLunchDrag(container);
 
   $$('.wd-cell:not(.wd-cell--booked):not(.wd-cell--empty)', container).forEach(cell => {
     const date = cell.dataset.date;
@@ -964,6 +1020,48 @@ function renderPatternGrid() {
     const key = /^\d+$/.test(rawKey) ? Number(rawKey) : rawKey;
     const group = groups.find(g => (g.period ?? (g.period_label ?? 'custom')) === key);
     th.addEventListener('click', () => startEditPeriodTime(group));
+  });
+}
+
+/** 점심시간 줄을 손가락/마우스로 눌러 끌면, 지나가는 자리(드롭존)가 밝아지고
+ * 놓으면 그 교시 뒤로 옮겨진다. 포인터 이벤트라 마우스·터치 모두에서 동작한다. */
+function wireLunchDrag(container) {
+  const lunchRow = $('.wd-lunch-row', container);
+  if (!lunchRow) return;
+  const zones = $$('.wd-lunch-dropzone', container);
+  const handle = $('.wd-lunch-cell', lunchRow);
+
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    lunchRow.classList.add('wd-lunch-row--dragging');
+    const startY = e.clientY;
+    let activeZone = null;
+
+    lunchRow.style.pointerEvents = 'none'; // 드래그 중엔 자기 자신 밑에 뭐가 있는지 봐야 하므로 히트테스트에서 빠진다
+    const onMove = (ev) => {
+      lunchRow.style.transform = `translateY(${ev.clientY - startY}px)`;
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const zone = under?.closest('.wd-lunch-dropzone');
+      if (zone !== activeZone) {
+        activeZone?.classList.remove('wd-lunch-dropzone--active');
+        activeZone = zone || null;
+        activeZone?.classList.add('wd-lunch-dropzone--active');
+      }
+    };
+    const onUp = () => {
+      lunchRow.classList.remove('wd-lunch-row--dragging');
+      lunchRow.style.transform = '';
+      lunchRow.style.pointerEvents = '';
+      zones.forEach(z => z.classList.remove('wd-lunch-dropzone--active'));
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      if (activeZone) moveLunch(Number(activeZone.dataset.afterPeriod));
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
   });
 }
 
