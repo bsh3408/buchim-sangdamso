@@ -226,13 +226,14 @@ textarea { resize:vertical; min-height:90px; }
 .wd-grid th, .wd-grid td { border:1px solid var(--border); padding:4px; text-align:center; }
 .wd-grid thead th { background:var(--disabled); color:var(--text-muted); font-weight:700; padding:8px 4px; }
 .wd-col-date { display:block; font-weight:400; color:var(--primary); font-size:10px; white-space:nowrap; }
-.wd-row-head { background:var(--disabled); font-weight:700; white-space:nowrap; padding:6px 10px; }
+.wd-row-head { background:var(--disabled); font-weight:700; white-space:nowrap; padding:6px 10px; vertical-align:middle; }
 .wd-row-time { font-weight:400; color:var(--text-muted); font-size:10px; }
 .wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:#fff; transition:background .12s; }
 .wd-cell:hover { background:var(--primary-soft); }
 .wd-cell--open { background:var(--success-soft); }
 .wd-cell--booked { background:#fde3dc; cursor:not-allowed; }
 .wd-cell--empty { background:repeating-linear-gradient(135deg, var(--disabled), var(--disabled) 4px, #fff 4px, #fff 8px); cursor:default; }
+.wd-cell-time { font-size:10px; color:var(--text-muted); margin-bottom:2px; }
 .wd-cell-label { font-size:11px; color:var(--text-muted); }
 .wd-cell--booked .wd-cell-label { color:var(--danger); font-weight:700; }
 .wd-method-tag {

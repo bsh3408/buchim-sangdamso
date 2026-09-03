@@ -618,28 +618,17 @@ function derivePatternFromDates() {
       ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' })),
   };
 
+  // dateOpen은 날짜 -> 상담 슬롯(시작 시각)마다 따로 상태를 기억한다. 한 교시 안에 상담이
+  // 2개 들어가면(예: 20분씩 2번) 그 둘을 각각 열고 닫을 수 있어야 하기 때문에, 교시 단위가
+  // 아니라 슬롯의 실제 시작 시각 단위로 저장한다.
   const dateOpen = {};
   for (const entry of entries) {
     dateOpen[entry.date] = {};
-    for (const group of groupByPeriod(entry.slots)) {
-      const key = group.period ?? (group.period_label ?? 'custom');
-      dateOpen[entry.date][key] = summarizeGroupState(group.slots);
+    for (const s of entry.slots) {
+      dateOpen[entry.date][s.start_time] = { is_open: s.is_open, mode: s.mode };
     }
   }
   teacherState.dateOpen = dateOpen;
-}
-
-/** 한 교시(여러 상담 슬롯)의 열림·방법 상태를 하나로 요약한다. */
-function summarizeGroupState(slots) {
-  const isOpen = slots.some(s => s.is_open);
-  const modes = new Set();
-  slots.forEach(s => {
-    if (!s.is_open) return;
-    if (s.mode === 'both') { modes.add('in_person'); modes.add('phone'); }
-    else if (s.mode) modes.add(s.mode);
-  });
-  const mode = modes.size === 2 ? 'both' : modes.size === 1 ? [...modes][0] : 'both';
-  return { is_open: isOpen, mode };
 }
 
 function renderTeacherDashboard() {
@@ -820,37 +809,36 @@ function renderAvailabilityPatternEditor() {
   renderPatternGrid();
 }
 
-/** 이 날짜·이 교시 칸에 실제 예약이 있는지 본다. */
-function isDatePeriodBooked(date, periodKey) {
+/** 이 날짜·이 상담 슬롯(시작 시각)에 실제 예약이 있는지 본다. */
+function isDateSlotBooked(date, startTime) {
   const entry = teacherState.dates.get(date);
   if (!entry) return false;
-  return entry.slots.some(s => (s.period ?? s.period_label) === periodKey && s.booking);
+  const slot = entry.slots.find(s => s.start_time === startTime);
+  return Boolean(slot?.booking);
 }
 
-/** dateOpen에 저장된 값이 있으면 그걸, 없으면 periodPattern 자체의 기본 상태를 돌려준다. */
-function getEffectiveDateState(date, periodKey, baseSlots) {
-  const override = teacherState.dateOpen[date]?.[periodKey];
-  if (override) return override;
-  return summarizeGroupState(baseSlots);
+/** dateOpen에 저장된 값이 있으면 그걸, 없으면 이 슬롯의 기본 상태를 돌려준다. */
+function getEffectiveDateState(date, startTime, baseSlot) {
+  return teacherState.dateOpen[date]?.[startTime] || { is_open: baseSlot.is_open, mode: baseSlot.mode };
 }
 
-function toggleDateOpen(date, key, baseSlots) {
+function toggleDateOpen(date, startTime, baseSlot) {
   if (!teacherState.dateOpen[date]) teacherState.dateOpen[date] = {};
-  const cur = getEffectiveDateState(date, key, baseSlots);
-  teacherState.dateOpen[date][key] = cur.is_open
+  const cur = getEffectiveDateState(date, startTime, baseSlot);
+  teacherState.dateOpen[date][startTime] = cur.is_open
     ? { is_open: false, mode: cur.mode }
     : { is_open: true, mode: cur.mode || 'both' };
   renderPatternGrid();
 }
 
-function toggleDateMethod(date, key, method, baseSlots) {
+function toggleDateMethod(date, startTime, method, baseSlot) {
   if (!teacherState.dateOpen[date]) teacherState.dateOpen[date] = {};
-  const cur = getEffectiveDateState(date, key, baseSlots);
+  const cur = getEffectiveDateState(date, startTime, baseSlot);
   const modes = new Set(cur.mode === 'both' ? ['in_person', 'phone'] : cur.mode ? [cur.mode] : []);
   if (modes.has(method)) modes.delete(method); else modes.add(method);
   const isOpen = modes.size > 0;
   const mode = modes.size === 2 ? 'both' : modes.size === 1 ? [...modes][0] : (cur.mode || 'both');
-  teacherState.dateOpen[date][key] = { is_open: isOpen, mode };
+  teacherState.dateOpen[date][startTime] = { is_open: isOpen, mode };
   renderPatternGrid();
 }
 
@@ -908,33 +896,39 @@ function renderPatternGrid() {
       }).join('') + '</tr></thead><tbody>';
 
     for (const group of groups) {
-      const key = group.period ?? (group.period_label ?? 'custom');
       const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
       const start = group.slots[0].start_time.slice(0, 5);
       const lastSlot = group.slots[group.slots.length - 1];
       const end = addMinutes(lastSlot.start_time.slice(0, 5), pattern.duration_minutes || 20);
       const range = group.period_range || `${start}~${end}`;
-      html += `<tr><th class="wd-row-head">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span></th>`;
-      for (let w = 1; w <= 5; w++) {
-        const date = days[w];
-        if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
-        const booked = isDatePeriodBooked(date, key);
-        const state = getEffectiveDateState(date, key, group.slots);
-        const cls = ['wd-cell'];
-        if (booked) cls.push('wd-cell--booked');
-        else if (state.is_open) cls.push('wd-cell--open');
-        html += `<td class="${cls.join(' ')}" data-date="${date}" data-key="${key}">`;
-        if (booked) {
-          html += `<span class="wd-cell-label">예약됨</span>`;
-        } else if (state.is_open) {
-          const modes = state.mode === 'both' ? ['in_person', 'phone'] : [state.mode];
-          html += modes.map(m => `<span class="wd-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}" data-m="${m}">${m === 'phone' ? '전화' : '방문'}</span>`).join('');
-        } else {
-          html += `<span class="wd-cell-label">닫힘</span>`;
+
+      group.slots.forEach((slot, subIdx) => {
+        html += '<tr>';
+        if (subIdx === 0) {
+          html += `<th class="wd-row-head" rowspan="${group.slots.length}">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span></th>`;
         }
-        html += `</td>`;
-      }
-      html += '</tr>';
+        for (let w = 1; w <= 5; w++) {
+          const date = days[w];
+          if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+          const booked = isDateSlotBooked(date, slot.start_time);
+          const state = getEffectiveDateState(date, slot.start_time, slot);
+          const cls = ['wd-cell'];
+          if (booked) cls.push('wd-cell--booked');
+          else if (state.is_open) cls.push('wd-cell--open');
+          html += `<td class="${cls.join(' ')}" data-date="${date}" data-start="${slot.start_time}">`;
+          html += `<div class="wd-cell-time">${slot.start_time.slice(0, 5)}</div>`;
+          if (booked) {
+            html += `<span class="wd-cell-label">예약됨</span>`;
+          } else if (state.is_open) {
+            const modes = state.mode === 'both' ? ['in_person', 'phone'] : [state.mode];
+            html += modes.map(m => `<span class="wd-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}" data-m="${m}">${m === 'phone' ? '전화' : '방문'}</span>`).join('');
+          } else {
+            html += `<span class="wd-cell-label">닫힘</span>`;
+          }
+          html += `</td>`;
+        }
+        html += '</tr>';
+      });
     }
     html += '</tbody></table></div>';
   });
@@ -942,16 +936,15 @@ function renderPatternGrid() {
 
   $$('.wd-cell:not(.wd-cell--booked):not(.wd-cell--empty)', container).forEach(cell => {
     const date = cell.dataset.date;
-    const rawKey = cell.dataset.key;
-    const key = /^\d+$/.test(rawKey) ? Number(rawKey) : rawKey;
-    const group = groups.find(g => (g.period ?? (g.period_label ?? 'custom')) === key);
+    const startTime = cell.dataset.start;
+    const slot = pattern.slots.find(s => s.start_time === startTime);
     cell.addEventListener('click', (e) => {
       const methodTag = e.target.closest('.wd-method-tag');
       if (methodTag) {
         e.stopPropagation();
-        toggleDateMethod(date, key, methodTag.dataset.m, group.slots);
+        toggleDateMethod(date, startTime, methodTag.dataset.m, slot);
       } else {
-        toggleDateOpen(date, key, group.slots);
+        toggleDateOpen(date, startTime, slot);
       }
     });
   });
@@ -961,16 +954,12 @@ async function saveAvailability() {
   const pattern = teacherState.periodPattern;
   const selected = [...teacherState.selectedDates];
   if (selected.length === 0) return toast('먼저 달력에서 날짜를 골라주세요');
-  const groups = groupByPeriod(pattern.slots);
   try {
     for (const d of selected) {
-      const slotsForDate = groups.flatMap(group => {
-        const key = group.period ?? (group.period_label ?? 'custom');
-        const state = getEffectiveDateState(d, key, group.slots);
-        return group.slots.map(({ start_time, period, period_range, period_label }) => ({
-          start_time, period, period_range, period_label,
-          is_open: state.is_open, mode: state.mode,
-        }));
+      const slotsForDate = pattern.slots.map((slot) => {
+        const state = getEffectiveDateState(d, slot.start_time, slot);
+        const { start_time, period, period_range, period_label } = slot;
+        return { start_time, period, period_range, period_label, is_open: state.is_open, mode: state.mode };
       });
       await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, pattern.preset, pattern.duration_minutes, slotsForDate);
     }
