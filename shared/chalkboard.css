@@ -218,34 +218,24 @@ textarea { resize:vertical; min-height:90px; }
 .cb-method-tag.m-visit { background:rgba(240,182,110,.18); border-color:#e0b06e; color:#f0d6a8; }
 .cb-method-tag.m-phone { background:rgba(122,181,213,.18); border-color:#7ab5d5; color:#bfe0f0; }
 
-/* ---- 담임 설정: 진짜 시간표 형태 ---- */
-.period-table-row { margin-bottom:20px; }
-.period-table-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
-.period-table-head strong { font-size:14px; color:var(--chalk); min-width:44px; }
-.period-table-head input[type="time"] { width:110px; padding:6px 8px; font-size:13px; }
-.period-table-head .hint-inline { font-size:11px; color:var(--chalk-dim); opacity:.8; }
-.period-table-slots { display:flex; gap:12px; flex-wrap:wrap; }
-.tt-slot {
-  background:rgba(255,255,255,.05); border:1.5px solid #4a6656; border-radius:10px;
-  padding:10px 12px; min-width:150px; display:flex; flex-direction:column; gap:8px;
-  cursor:pointer; user-select:none; transition:all .15s;
+/* ---- 담임 설정: 요일 x 교시 진짜 시간표 형태 ---- */
+.wd-grid-wrap { overflow-x:auto; border-radius:10px; border:1px solid var(--border); }
+.wd-grid { width:100%; border-collapse:collapse; font-size:12px; background:#fff; }
+.wd-grid th, .wd-grid td { border:1px solid var(--border); padding:4px; text-align:center; }
+.wd-grid thead th { background:var(--disabled); color:var(--text-muted); font-weight:700; padding:8px 4px; }
+.wd-row-head { background:var(--disabled); font-weight:700; white-space:nowrap; padding:6px 10px; }
+.wd-row-time { font-weight:400; color:var(--text-muted); font-size:10px; }
+.wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:#fff; transition:background .12s; }
+.wd-cell:hover { background:var(--primary-soft); }
+.wd-cell--open { background:var(--success-soft); }
+.wd-cell--booked { background:#fde3dc; cursor:not-allowed; }
+.wd-cell-label { font-size:11px; color:var(--text-muted); }
+.wd-cell--booked .wd-cell-label { color:var(--danger); font-weight:700; }
+.wd-method-tag {
+  display:inline-block; font-size:10px; padding:2px 6px; border-radius:10px; margin:1px; font-weight:700; cursor:pointer;
 }
-.tt-slot:hover { border-color:#a8c4ae; }
-.tt-slot.tt-slot--open { border-color:var(--success); background:rgba(79,162,122,.1); }
-.tt-slot.tt-slot--off { opacity:.55; }
-.tt-slot.tt-slot--booked { cursor:default; border-style:solid; border-color:var(--postit); background:rgba(255,226,122,.08); }
-.tt-slot-time { color:var(--chalk); font-size:13px; font-weight:600; }
-.tt-slot-methods { display:flex; gap:6px; flex-wrap:wrap; }
-.tt-method {
-  font-size:11px; padding:5px 10px; border-radius:20px; font-weight:600; cursor:pointer;
-  background:rgba(255,255,255,.06); border:1px solid #6f8c78; color:var(--chalk-dim); font-family:inherit;
-}
-.tt-method.on.m-visit { background:#f0b66e; color:#4a2f0a; border-color:#f0b66e; }
-.tt-method.on.m-phone { background:#7ab5d5; color:#0a2c3d; border-color:#7ab5d5; }
-.tt-slot-postit {
-  align-self:center; background:var(--postit); color:var(--postit-text); font-size:12px; font-weight:700;
-  padding:6px 12px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,.3);
-}
+.wd-method-tag.m-visit { background:#f0b66e; color:#4a2f0a; }
+.wd-method-tag.m-phone { background:#7ab5d5; color:#0a2c3d; }
 
 .postit {
   position:absolute; inset:3px; background:var(--postit); border-radius:3px;

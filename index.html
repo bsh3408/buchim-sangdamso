@@ -445,9 +445,15 @@ async function doCancelBooking(slot, slotEl, bg) {
 /*****************************************************
  * 담임 플로우
  *****************************************************/
+const WEEKDAY_LABELS = [null, '월', '화', '수', '목', '금'];
+
 let teacherState = {
   pageId: null, adminCode: null, teacherName: '', school: '', schoolLevel: '', grade: '', teacherClass: '',
-  parentCode: null, dates: new Map(), editingDate: null,
+  parentCode: null,
+  dates: new Map(), // date -> 서버에서 불러온 실제 슬롯(예약 포함)
+  selectedDates: new Set(), // 달력에서 고른 날짜(저장 대상)
+  periodPattern: null, // { preset, duration_minutes, slots:[...] } 교시 시간 틀(모든 요일 공통)
+  weekdayOpen: { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} }, // weekdayOpen[요일][교시] = { is_open, mode }
 };
 
 function startTeacher() {
@@ -590,6 +596,56 @@ async function loadTeacherSchedule() {
     ...d,
     slots: d.slots.map(s => ({ ...s, start_time: s.start_time.slice(0, 5) })),
   }]));
+  teacherState.selectedDates = new Set(teacherState.dates.keys());
+  derivePatternFromDates();
+}
+
+/** 서버에 저장된 날짜들의 시간 구조·요일별 열림 상태를 편집용 틀(periodPattern/weekdayOpen)로 되살린다. */
+function derivePatternFromDates() {
+  const entries = [...teacherState.dates.values()];
+  if (entries.length === 0) {
+    if (!teacherState.periodPattern) {
+      teacherState.periodPattern = {};
+      generateDefaultSlots(teacherState.periodPattern);
+    }
+    teacherState.weekdayOpen = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} };
+    return;
+  }
+
+  // periodPattern.slots는 순전히 "교시 시간 구조"만 나타낸다. 실제 열림·방법 상태는 전부
+  // weekdayOpen 쪽 명시적인 값으로만 판단하므로, 여기서는 항상 닫힘을 기본값으로 둔다
+  // (그렇지 않으면 기준으로 삼은 날짜의 요일 상태가 다른 모든 요일의 기본값으로 새어나간다).
+  const base = entries[0];
+  teacherState.periodPattern = {
+    preset: base.preset,
+    duration_minutes: base.duration_minutes,
+    slots: base.slots.map(({ start_time, period, period_range, period_label }) =>
+      ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' })),
+  };
+
+  const weekdayOpen = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} };
+  for (const entry of entries) {
+    const wd = new Date(entry.date + 'T00:00:00').getDay();
+    if (wd < 1 || wd > 5) continue;
+    for (const group of groupByPeriod(entry.slots)) {
+      const key = group.period ?? (group.period_label ?? 'custom');
+      weekdayOpen[wd][key] = summarizeGroupState(group.slots);
+    }
+  }
+  teacherState.weekdayOpen = weekdayOpen;
+}
+
+/** 한 교시(여러 상담 슬롯)의 열림·방법 상태를 하나로 요약한다. */
+function summarizeGroupState(slots) {
+  const isOpen = slots.some(s => s.is_open);
+  const modes = new Set();
+  slots.forEach(s => {
+    if (!s.is_open) return;
+    if (s.mode === 'both') { modes.add('in_person'); modes.add('phone'); }
+    else if (s.mode) modes.add(s.mode);
+  });
+  const mode = modes.size === 2 ? 'both' : modes.size === 1 ? [...modes][0] : 'both';
+  return { is_open: isOpen, mode };
 }
 
 function renderTeacherDashboard() {
@@ -627,47 +683,42 @@ function renderTeacherDashboard() {
 }
 
 function openAvailabilityEditor() {
-  if (!teacherState.editingDate && teacherState.dates.size > 0) {
-    teacherState.editingDate = [...teacherState.dates.keys()].sort()[0];
-  }
   setView('teacher-availability', renderAvailabilityEditor);
 }
 
 function renderAvailabilityEditor() {
   const t = teacherState;
-  const sortedDates = [...t.dates.keys()].sort();
+  const sortedDates = [...t.selectedDates].sort();
   $('#main').innerHTML = `
     <div class="card">
       <h2>상담 가능 시간 설정</h2>
-      <p class="subtitle">달력에서 날짜를 눌러 추가하고, 다시 누르면 빼요. 고른 날짜 전체에 똑같은 시간표가 적용돼요.</p>
+      <p class="subtitle">달력에서 날짜를 눌러 추가하고, 다시 누르면 빼요. 교시 시간은 아래에서 한 번만 정하고, 요일별로 열고 닫는 건 시간표에서 따로 정해요.</p>
       <div id="rangeCalendar"></div>
 
       ${sortedDates.length > 0 ? `
-        <h3 style="margin-top:20px;">날짜</h3>
+        <h3 style="margin-top:20px;">고른 날짜 (${sortedDates.length}일, 눌러서 빼기)</h3>
         <div class="date-scroll" id="ta-dateScroll"></div>
       ` : ''}
       <div id="ta-editor"></div>
     </div>
   `;
-  renderCalendar($('#rangeCalendar'), { onToggleDate: toggleDate, selectedDates: [...t.dates.keys()] });
+  renderCalendar($('#rangeCalendar'), { onToggleDate: toggleDate, selectedDates: sortedDates });
 
-  if (sortedDates.length > 0) {
-    renderTeacherDateScroll();
-    renderAvailabilityDateEditor();
-  }
+  if (sortedDates.length > 0) renderTeacherDateScroll();
+  renderAvailabilityPatternEditor();
 }
 
-function generateDefaultSlots(entry) {
-  const preset = entry.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
-  entry.preset = preset;
-  entry.duration_minutes = entry.duration_minutes || 20;
-  entry.slots = buildPresetSlots({ preset, startTime: '09:00', periodCount: 6, consultMinutes: entry.duration_minutes });
+function generateDefaultSlots(pattern) {
+  const preset = pattern.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
+  pattern.preset = preset;
+  pattern.duration_minutes = pattern.duration_minutes || 20;
+  pattern.slots = buildPresetSlots({ preset, startTime: '09:00', periodCount: 6, consultMinutes: pattern.duration_minutes });
 }
 
 async function toggleDate(dateStr) {
-  if (teacherState.dates.has(dateStr)) {
+  if (teacherState.selectedDates.has(dateStr)) {
     const entry = teacherState.dates.get(dateStr);
-    if (entry.slots.some(s => s.booking)) {
+    if (entry?.slots.some(s => s.booking)) {
       return toast('이미 예약이 있는 날짜는 뺄 수 없어요. 예약을 먼저 취소해주세요.');
     }
     try {
@@ -675,39 +726,30 @@ async function toggleDate(dateStr) {
     } catch (err) {
       return toast(err.message);
     }
+    teacherState.selectedDates.delete(dateStr);
     teacherState.dates.delete(dateStr);
-    if (teacherState.editingDate === dateStr) {
-      teacherState.editingDate = [...teacherState.dates.keys()].sort()[0] || null;
-    }
   } else {
-    const entry = { date: dateStr, preset: null, duration_minutes: 20, slots: [] };
-    generateDefaultSlots(entry);
-    teacherState.dates.set(dateStr, entry);
-    teacherState.editingDate = dateStr;
+    teacherState.selectedDates.add(dateStr);
   }
   renderAvailabilityEditor();
 }
 
 function renderTeacherDateScroll() {
   const scroll = $('#ta-dateScroll');
-  const sortedDates = [...teacherState.dates.keys()].sort();
+  const sortedDates = [...teacherState.selectedDates].sort();
   scroll.innerHTML = sortedDates.map(d => `
-    <div class="date-chip ${d === teacherState.editingDate ? 'selected' : ''}" data-date="${d}">
+    <div class="date-chip selected" data-date="${d}" title="눌러서 빼기">
       <div class="dow">${d.slice(5)} (${dowLabel(d)})</div>
       <div class="dd">${Number(d.slice(8, 10))}</div>
     </div>
   `).join('');
   $$('.date-chip', scroll).forEach(chip => {
-    chip.addEventListener('click', () => {
-      teacherState.editingDate = chip.dataset.date;
-      renderTeacherDateScroll();
-      renderAvailabilityDateEditor();
-    });
+    chip.addEventListener('click', () => toggleDate(chip.dataset.date));
   });
 }
 
-function renderAvailabilityDateEditor() {
-  const entry = teacherState.dates.get(teacherState.editingDate);
+function renderAvailabilityPatternEditor() {
+  const pattern = teacherState.periodPattern;
   const editor = $('#ta-editor');
   editor.innerHTML = `
     <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap;align-items:center;">
@@ -725,12 +767,8 @@ function renderAvailabilityDateEditor() {
         시작 <input type="time" id="customStart" value="09:00" style="width:110px;">
         종료 <input type="time" id="customEnd" value="16:00" style="width:110px;">
       </span>
-      상담시간(분) <input type="number" id="consultMinutes" min="5" max="120" value="${entry.duration_minutes || 20}" style="width:60px;">
+      상담시간(분) <input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}" style="width:60px;">
       <button class="btn btn-secondary" id="generateBtn">시간표 만들기</button>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px;">
-      <button class="btn btn-secondary" style="flex:1;" id="bulkOpenBtn">전체 열기 (방문·전화)</button>
-      <button class="btn btn-ghost" style="flex:1;" id="bulkCloseBtn">전체 닫기</button>
     </div>
     <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin-bottom:10px;">➕ 방과후 상담 추가</button>
     <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:14px;">
@@ -738,14 +776,14 @@ function renderAvailabilityDateEditor() {
       <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
       <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
     </div>
-    <h3 style="margin-top:14px;">시간 조정 (칸을 끌어서 옮기거나, 오른쪽 끝을 끌어서 늘여보세요)</h3>
+    <h3 style="margin-top:14px;">교시 시간 조정 (모든 요일 공통 — 칸을 끌어서 옮기거나, 오른쪽 끝을 끌어서 늘여보세요)</h3>
     <div class="card" style="background:var(--bg);box-shadow:none;border:1px solid var(--border);padding:14px;margin-bottom:16px;" id="periodTimeline"></div>
-    <div class="cb-wrap" id="editGrid"></div>
-    <button class="btn btn-primary btn-block btn-lg" style="margin-top:16px;" id="saveDateBtn">💾 이 기간 전체에 저장</button>
-    <div id="ta-bookingList" style="margin-top:16px;"></div>
+    <h3>요일별 시간표 (칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요)</h3>
+    <div id="weekdayGrid" style="margin-bottom:16px;"></div>
+    <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">💾 고른 날짜에 저장</button>
   `;
 
-  $('#presetSelect').value = entry.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
+  $('#presetSelect').value = pattern.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
   const syncPresetVisibility = () => {
     const custom = $('#presetSelect').value === 'custom';
     $('#presetRange').style.display = custom ? 'none' : 'inline';
@@ -763,18 +801,11 @@ function renderAvailabilityDateEditor() {
     } else {
       slots = buildPresetSlots({ preset, startTime: $('#presetStart').value || '09:00', periodCount: Number($('#periodCount').value) || 6, consultMinutes });
     }
-    entry.preset = preset;
-    entry.duration_minutes = consultMinutes;
-    entry.slots = slots;
-    renderEditGrid();
-  });
-  $('#bulkOpenBtn').addEventListener('click', () => {
-    entry.slots.forEach(s => { if (!s.booking) { s.is_open = true; s.mode = 'both'; } });
-    renderEditGrid();
-  });
-  $('#bulkCloseBtn').addEventListener('click', () => {
-    entry.slots.forEach(s => { if (!s.booking) s.is_open = false; });
-    renderEditGrid();
+    pattern.preset = preset;
+    pattern.duration_minutes = consultMinutes;
+    pattern.slots = slots;
+    renderPeriodTimeline();
+    renderPatternGrid();
   });
   $('#afterschoolToggle').addEventListener('click', () => {
     const form = $('#afterschoolForm');
@@ -784,83 +815,86 @@ function renderAvailabilityDateEditor() {
     const startTime = $('#afterStart').value;
     const endTime = $('#afterEnd').value;
     if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
-    const consultMinutes = entry.duration_minutes || 20;
+    const consultMinutes = pattern.duration_minutes || 20;
     const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
-    const existingStarts = new Set(entry.slots.map(s => s.start_time));
+    const existingStarts = new Set(pattern.slots.map(s => s.start_time));
     const toAdd = newSlots.filter(s => !existingStarts.has(s.start_time));
     if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
-    entry.slots.push(...toAdd);
+    pattern.slots.push(...toAdd);
     $('#afterschoolForm').style.display = 'none';
-    renderEditGrid();
+    renderPeriodTimeline();
+    renderPatternGrid();
   });
   $('#saveDateBtn').addEventListener('click', saveAvailability);
 
-  renderEditGrid();
+  renderPeriodTimeline();
+  renderPatternGrid();
 }
 
-function createTtSlot(slot, durationMinutes, handlers) {
-  const start = slot.start_time.slice(0, 5);
-  const end = addMinutes(start, durationMinutes || 20);
-
-  if (slot.booking) {
-    return el(`
-      <div class="tt-slot tt-slot--booked">
-        <div class="tt-slot-time">${start}~${end}</div>
-        <div class="tt-slot-postit">${escapeHtml(slot.booking.student_number)}번</div>
-      </div>
-    `);
+/** 이 교시가 어느 요일에서든 예약이 있는지 본다. 시간(교시 자체)은 모든 요일이 공유하므로,
+ * 시간 조정(타임라인)은 이 기준으로 막아야 한다. */
+function isPeriodBooked(periodKey) {
+  for (const entry of teacherState.dates.values()) {
+    for (const s of entry.slots) {
+      if ((s.period ?? s.period_label) === periodKey && s.booking) return true;
+    }
   }
-
-  const modes = slot.mode === 'both' ? ['in_person', 'phone'] : slot.mode ? [slot.mode] : ['in_person', 'phone'];
-  const node = el(`
-    <div class="tt-slot ${slot.is_open ? 'tt-slot--open' : 'tt-slot--off'}">
-      <div class="tt-slot-time">${start}~${end}</div>
-      <div class="tt-slot-methods">
-        <button type="button" class="tt-method m-visit ${modes.includes('in_person') ? 'on' : ''}" data-m="in_person">🏫 방문</button>
-        <button type="button" class="tt-method m-phone ${modes.includes('phone') ? 'on' : ''}" data-m="phone">📞 전화</button>
-      </div>
-    </div>
-  `);
-  node.addEventListener('click', (e) => {
-    const btn = e.target.closest('.tt-method');
-    if (btn) { e.stopPropagation(); handlers.onMethodToggle(slot, btn.dataset.m); }
-    else handlers.onToggleOpen(slot);
-  });
-  return node;
+  return false;
 }
 
-function applyTimelineChange(entry, key, { startMinutes, durationMinutes }) {
+/** 특정 요일·교시 칸에 실제 예약이 있는지 본다(요일별 시간표 칸 잠금용). */
+function isWeekdayPeriodBooked(weekday, periodKey) {
+  for (const [date, entry] of teacherState.dates) {
+    if (new Date(date + 'T00:00:00').getDay() !== weekday) continue;
+    for (const s of entry.slots) {
+      if ((s.period ?? s.period_label) === periodKey && s.booking) return true;
+    }
+  }
+  return false;
+}
+
+/** weekdayOpen에 저장된 값이 있으면 그걸, 없으면 patternPattern 자체의 기본 상태를 돌려준다. */
+function getEffectiveState(weekday, periodKey, baseSlots) {
+  const override = teacherState.weekdayOpen[weekday]?.[periodKey];
+  if (override) return override;
+  return summarizeGroupState(baseSlots);
+}
+
+function applyTimelineChange(key, { startMinutes, durationMinutes }) {
+  const pattern = teacherState.periodPattern;
   if (typeof key === 'number') {
-    const freshSlots = rebuildPeriod(addMinutes('00:00', startMinutes), durationMinutes, entry.duration_minutes || 20, key);
-    entry.slots = entry.slots.filter(s => s.period !== key).concat(freshSlots);
+    const freshSlots = rebuildPeriod(addMinutes('00:00', startMinutes), durationMinutes, pattern.duration_minutes || 20, key);
+    pattern.slots = pattern.slots.filter(s => s.period !== key).concat(freshSlots);
   } else {
     const labelValue = key === 'custom' ? undefined : key;
-    const consultMinutes = entry.duration_minutes || 20;
+    const consultMinutes = pattern.duration_minutes || 20;
     const freshSlots = buildAfterschoolSlots({
       startTime: addMinutes('00:00', startMinutes),
       endTime: addMinutes('00:00', startMinutes + durationMinutes),
       consultMinutes,
     }).map(s => ({ ...s, period_label: labelValue }));
-    entry.slots = entry.slots.filter(s => (s.period_label ?? 'custom') !== key).concat(freshSlots);
+    pattern.slots = pattern.slots.filter(s => (s.period_label ?? 'custom') !== key).concat(freshSlots);
   }
-  renderEditGrid();
+  renderPeriodTimeline();
+  renderPatternGrid();
 }
 
-function renderPeriodTimeline(entry) {
+function renderPeriodTimeline() {
+  const pattern = teacherState.periodPattern;
   const timelineCard = $('#periodTimeline');
-  const groups = groupByPeriod(entry.slots);
+  const groups = groupByPeriod(pattern.slots);
   if (groups.length === 0) { timelineCard.innerHTML = ''; return; }
 
   const items = groups.map(group => {
     const key = group.period ?? (group.period_label ?? 'custom');
     const startMinutes = toMinutesLocal(group.slots[0].start_time.slice(0, 5));
     const lastSlot = group.slots[group.slots.length - 1];
-    const endMinutes = toMinutesLocal(lastSlot.start_time.slice(0, 5)) + (entry.duration_minutes || 20);
+    const endMinutes = toMinutesLocal(lastSlot.start_time.slice(0, 5)) + (pattern.duration_minutes || 20);
     return {
       period: key,
       startMinutes,
-      durationMinutes: Math.max(endMinutes - startMinutes, entry.duration_minutes || 20),
-      locked: group.slots.some(s => s.booking),
+      durationMinutes: Math.max(endMinutes - startMinutes, pattern.duration_minutes || 20),
+      locked: isPeriodBooked(key),
       label: group.period_label || (group.period ? `${group.period}교시` : '직접 설정'),
     };
   });
@@ -872,88 +906,102 @@ function renderPeriodTimeline(entry) {
 
   renderTimeline(timelineCard, items, {
     dayStartMinutes, dayEndMinutes,
-    onChange: (key, change) => applyTimelineChange(entry, key, change),
+    onChange: (key, change) => applyTimelineChange(key, change),
   });
 }
 
-function renderEditGrid() {
-  const entry = teacherState.dates.get(teacherState.editingDate);
-  const container = $('#editGrid');
-  container.innerHTML = '';
-  container.appendChild(el(`<div class="cb-title" style="color:var(--chalk);opacity:.85;font-size:13px;margin-bottom:14px;">${teacherState.editingDate} (이 기간 전체에 똑같이 적용됩니다)</div>`));
-
-  const handlers = {
-    onToggleOpen: (slot) => {
-      if (slot.is_open) { slot.is_open = false; }
-      else { slot.is_open = true; if (!slot.mode) slot.mode = 'both'; }
-      renderEditGrid();
-    },
-    onMethodToggle: (slot, method) => {
-      const modes = new Set(slot.mode === 'both' ? ['in_person', 'phone'] : slot.mode ? [slot.mode] : []);
-      if (modes.has(method)) modes.delete(method); else modes.add(method);
-      if (modes.size === 0) { slot.mode = 'both'; slot.is_open = false; }
-      else { slot.mode = modes.size === 2 ? 'both' : [...modes][0]; slot.is_open = true; }
-      renderEditGrid();
-    },
-  };
-
-  for (const group of groupByPeriod(entry.slots)) {
-    const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
-    const row = document.createElement('div');
-    row.className = 'period-table-row';
-    row.appendChild(el(`
-      <div class="period-table-head">
-        <strong>${escapeHtml(headLabel)}</strong>
-        ${group.period_range ? `<span class="hint-inline">기존 ${group.period_range}</span>` : ''}
-      </div>
-    `));
-    const slotsWrap = document.createElement('div');
-    slotsWrap.className = 'period-table-slots';
-    for (const slot of group.slots) {
-      slotsWrap.appendChild(createTtSlot(slot, entry.duration_minutes, handlers));
-    }
-    row.appendChild(slotsWrap);
-    container.appendChild(row);
-  }
-
-  renderPeriodTimeline(entry);
-  renderTeacherBookingList();
+function toggleWeekdayOpen(weekday, key, baseSlots) {
+  const cur = getEffectiveState(weekday, key, baseSlots);
+  teacherState.weekdayOpen[weekday][key] = cur.is_open
+    ? { is_open: false, mode: cur.mode }
+    : { is_open: true, mode: cur.mode || 'both' };
+  renderPatternGrid();
 }
 
-function renderTeacherBookingList() {
-  const entry = teacherState.dates.get(teacherState.editingDate);
-  const listEl = $('#ta-bookingList');
-  const booked = entry.slots.filter(s => s.booking).sort((a, b) => a.start_time.localeCompare(b.start_time));
-  if (booked.length === 0) {
-    listEl.innerHTML = '<p class="hint">이 날짜엔 아직 신청이 없어요.</p>';
-    return;
+function toggleWeekdayMethod(weekday, key, method, baseSlots) {
+  const cur = getEffectiveState(weekday, key, baseSlots);
+  const modes = new Set(cur.mode === 'both' ? ['in_person', 'phone'] : cur.mode ? [cur.mode] : []);
+  if (modes.has(method)) modes.delete(method); else modes.add(method);
+  const isOpen = modes.size > 0;
+  const mode = modes.size === 2 ? 'both' : modes.size === 1 ? [...modes][0] : (cur.mode || 'both');
+  teacherState.weekdayOpen[weekday][key] = { is_open: isOpen, mode };
+  renderPatternGrid();
+}
+
+function renderPatternGrid() {
+  const pattern = teacherState.periodPattern;
+  const container = $('#weekdayGrid');
+  const groups = groupByPeriod(pattern.slots);
+  if (groups.length === 0) { container.innerHTML = '<p class="hint">먼저 위에서 시간표를 만들어주세요.</p>'; return; }
+
+  let html = '<div class="wd-grid-wrap"><table class="wd-grid"><thead><tr><th></th>' +
+    WEEKDAY_LABELS.slice(1).map(w => `<th>${w}</th>`).join('') + '</tr></thead><tbody>';
+
+  for (const group of groups) {
+    const key = group.period ?? (group.period_label ?? 'custom');
+    const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
+    const start = group.slots[0].start_time.slice(0, 5);
+    html += `<tr><th class="wd-row-head">${escapeHtml(headLabel)}<br><span class="wd-row-time">${start}</span></th>`;
+    for (let w = 1; w <= 5; w++) {
+      const booked = isWeekdayPeriodBooked(w, key);
+      const state = getEffectiveState(w, key, group.slots);
+      const cls = ['wd-cell'];
+      if (booked) cls.push('wd-cell--booked');
+      else if (state.is_open) cls.push('wd-cell--open');
+      html += `<td class="${cls.join(' ')}" data-weekday="${w}" data-key="${key}">`;
+      if (booked) {
+        html += `<span class="wd-cell-label">예약됨</span>`;
+      } else if (state.is_open) {
+        const modes = state.mode === 'both' ? ['in_person', 'phone'] : [state.mode];
+        html += modes.map(m => `<span class="wd-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}" data-m="${m}">${m === 'phone' ? '전화' : '방문'}</span>`).join('');
+      } else {
+        html += `<span class="wd-cell-label">닫힘</span>`;
+      }
+      html += `</td>`;
+    }
+    html += '</tr>';
   }
-  listEl.innerHTML = `<h3>이 날짜 신청 목록</h3>` + booked.map(s => `
-    <div class="booking-item">
-      <div class="booking-item-head">
-        <div>
-          <div class="booking-item-title">${escapeHtml(s.booking.student_number)}번 ${escapeHtml(s.booking.student_name)}</div>
-          <div class="booking-item-time">📅 ${s.start_time}</div>
-        </div>
-      </div>
-      <div class="booking-item-meta"><strong>학부모</strong> ${escapeHtml(s.booking.parent_name)} · ${escapeHtml(s.booking.parent_phone)}</div>
-      <div>${s.booking.mode === 'phone' ? '<span class="tag method-phone">📞 전화</span>' : '<span class="tag method-visit">🏫 방문</span>'}${(s.booking.topics || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
-      ${s.booking.notes ? `<div style="background:var(--disabled);padding:10px;border-radius:8px;font-size:13px;margin-top:6px;white-space:pre-wrap;">${escapeHtml(s.booking.notes)}</div>` : ''}
-    </div>
-  `).join('');
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+
+  $$('.wd-cell:not(.wd-cell--booked)', container).forEach(cell => {
+    const weekday = Number(cell.dataset.weekday);
+    const rawKey = cell.dataset.key;
+    const key = /^\d+$/.test(rawKey) ? Number(rawKey) : rawKey;
+    const group = groups.find(g => (g.period ?? (g.period_label ?? 'custom')) === key);
+    cell.addEventListener('click', (e) => {
+      const methodTag = e.target.closest('.wd-method-tag');
+      if (methodTag) {
+        e.stopPropagation();
+        toggleWeekdayMethod(weekday, key, methodTag.dataset.m, group.slots);
+      } else {
+        toggleWeekdayOpen(weekday, key, group.slots);
+      }
+    });
+  });
 }
 
 async function saveAvailability() {
-  const entry = teacherState.dates.get(teacherState.editingDate);
-  const allDates = [...teacherState.dates.keys()];
-  const strippedSlots = entry.slots.map(({ start_time, mode, is_open, period, period_range, period_label }) => ({ start_time, mode, is_open, period, period_range, period_label }));
+  const pattern = teacherState.periodPattern;
+  const selected = [...teacherState.selectedDates];
+  if (selected.length === 0) return toast('먼저 달력에서 날짜를 골라주세요');
+  const groups = groupByPeriod(pattern.slots);
   try {
-    for (const d of allDates) {
-      await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, entry.preset, entry.duration_minutes, strippedSlots);
+    for (const d of selected) {
+      const weekday = new Date(d + 'T00:00:00').getDay();
+      const slotsForDate = groups.flatMap(group => {
+        const key = group.period ?? (group.period_label ?? 'custom');
+        const state = getEffectiveState(weekday, key, group.slots);
+        return group.slots.map(({ start_time, period, period_range, period_label }) => ({
+          start_time, period, period_range, period_label,
+          is_open: state.is_open, mode: state.mode,
+        }));
+      });
+      await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, pattern.preset, pattern.duration_minutes, slotsForDate);
     }
     await loadTeacherSchedule();
     renderAvailabilityEditor();
-    toast(`${allDates.length}개 날짜에 저장했어요`);
+    toast(`${selected.length}개 날짜에 저장했어요`);
     await maybePublish();
   } catch (err) {
     toast(err.message);
