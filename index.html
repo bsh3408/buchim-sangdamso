@@ -677,17 +677,10 @@ function renderAvailabilityEditor() {
       <h2>상담 가능 시간 설정</h2>
       <p class="subtitle">달력에서 날짜를 눌러 추가하고, 다시 누르면 빼요. 교시 시간은 아래에서 한 번만 정하고, 요일별로 열고 닫는 건 시간표에서 따로 정해요.</p>
       <div id="rangeCalendar"></div>
-
-      ${sortedDates.length > 0 ? `
-        <h3 style="margin-top:20px;">고른 날짜 (${sortedDates.length}일, 눌러서 빼기)</h3>
-        <div class="date-scroll" id="ta-dateScroll"></div>
-      ` : ''}
       <div id="ta-editor"></div>
     </div>
   `;
   renderCalendar($('#rangeCalendar'), { onToggleDate: toggleDate, selectedDates: sortedDates });
-
-  if (sortedDates.length > 0) renderTeacherDateScroll();
   renderAvailabilityPatternEditor();
 }
 
@@ -717,20 +710,6 @@ async function toggleDate(dateStr) {
   renderAvailabilityEditor();
 }
 
-function renderTeacherDateScroll() {
-  const scroll = $('#ta-dateScroll');
-  const sortedDates = [...teacherState.selectedDates].sort();
-  scroll.innerHTML = sortedDates.map(d => `
-    <div class="date-chip selected" data-date="${d}" title="눌러서 빼기">
-      <div class="dow">${d.slice(5)} (${dowLabel(d)})</div>
-      <div class="dd">${Number(d.slice(8, 10))}</div>
-    </div>
-  `).join('');
-  $$('.date-chip', scroll).forEach(chip => {
-    chip.addEventListener('click', () => toggleDate(chip.dataset.date));
-  });
-}
-
 function renderAvailabilityPatternEditor() {
   const pattern = teacherState.periodPattern;
   const editor = $('#ta-editor');
@@ -751,8 +730,14 @@ function renderAvailabilityPatternEditor() {
         종료 <input type="time" id="customEnd" value="16:00" style="width:110px;">
       </span>
       상담시간(분) <input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}" style="width:60px;">
+      <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="lunchEnable"> 점심시간</label>
+      <span id="lunchControls" style="display:none;">
+        <input type="number" id="lunchAfter" min="1" max="10" value="4" style="width:40px;">교시 뒤
+        <input type="number" id="lunchMinutes" min="10" max="120" value="50" style="width:56px;">분
+      </span>
       <button class="btn btn-secondary" id="generateBtn">시간표 만들기</button>
     </div>
+    <p class="hint" style="margin:-8px 0 12px;">시간을 더 세밀하게 바꾸고 싶으면, 아래 시간표에서 시각을 더블클릭해보세요.</p>
     <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin-bottom:10px;">➕ 방과후 상담 추가</button>
     <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:14px;">
       <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
@@ -772,6 +757,9 @@ function renderAvailabilityPatternEditor() {
   };
   syncPresetVisibility();
   $('#presetSelect').addEventListener('change', syncPresetVisibility);
+  $('#lunchEnable').addEventListener('change', () => {
+    $('#lunchControls').style.display = $('#lunchEnable').checked ? 'inline' : 'none';
+  });
 
   $('#generateBtn').addEventListener('click', () => {
     const preset = $('#presetSelect').value;
@@ -780,7 +768,12 @@ function renderAvailabilityPatternEditor() {
     if (preset === 'custom') {
       slots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
     } else {
-      slots = buildPresetSlots({ preset, startTime: $('#presetStart').value || '09:00', periodCount: Number($('#periodCount').value) || 6, consultMinutes });
+      const lunchAfterPeriod = $('#lunchEnable').checked ? (Number($('#lunchAfter').value) || null) : null;
+      const lunchMinutes = Number($('#lunchMinutes').value) || 50;
+      slots = buildPresetSlots({
+        preset, startTime: $('#presetStart').value || '09:00', periodCount: Number($('#periodCount').value) || 6,
+        consultMinutes, lunchAfterPeriod, lunchMinutes,
+      });
     }
     pattern.preset = preset;
     pattern.duration_minutes = consultMinutes;
@@ -896,6 +889,7 @@ function renderPatternGrid() {
       }).join('') + '</tr></thead><tbody>';
 
     for (const group of groups) {
+      const groupKey = group.period ?? (group.period_label ?? 'custom');
       const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
       const start = group.slots[0].start_time.slice(0, 5);
       const lastSlot = group.slots[group.slots.length - 1];
@@ -905,7 +899,7 @@ function renderPatternGrid() {
       group.slots.forEach((slot, subIdx) => {
         html += '<tr>';
         if (subIdx === 0) {
-          html += `<th class="wd-row-head" rowspan="${group.slots.length}">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span></th>`;
+          html += `<th class="wd-row-head" rowspan="${group.slots.length}" data-period-key="${groupKey}">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span></th>`;
         }
         for (let w = 1; w <= 5; w++) {
           const date = days[w];
@@ -947,6 +941,109 @@ function renderPatternGrid() {
         toggleDateOpen(date, startTime, slot);
       }
     });
+    const timeEl = cell.querySelector('.wd-cell-time');
+    timeEl.addEventListener('click', (e) => e.stopPropagation());
+    timeEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startEditSlotTime(timeEl, slot);
+    });
+  });
+
+  $$('.wd-row-head', container).forEach(th => {
+    const rawKey = th.dataset.periodKey;
+    const key = /^\d+$/.test(rawKey) ? Number(rawKey) : rawKey;
+    const group = groups.find(g => (g.period ?? (g.period_label ?? 'custom')) === key);
+    const rowTimeEl = th.querySelector('.wd-row-time');
+    rowTimeEl.addEventListener('click', (e) => e.stopPropagation());
+    rowTimeEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startEditPeriodTime(rowTimeEl, group);
+    });
+  });
+}
+
+/** 이 시작 시각을 가진 상담 슬롯이 어느 날짜에서든 이미 예약됐는지 본다(시간은 모든
+ * 날짜가 공유하므로, 하나라도 예약이 있으면 시간을 못 바꾸게 막아야 한다). */
+function isSlotTimeBooked(startTime) {
+  for (const entry of teacherState.dates.values()) {
+    if (entry.slots.some(s => s.start_time === startTime && s.booking)) return true;
+  }
+  return false;
+}
+
+function hhmmToMinutes(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/** "HH:MM" 또는 "HH:MM:SS" 문자열에 분을 더해 같은 형식으로 돌려준다. */
+function shiftTimeString(timeStr, deltaMinutes) {
+  const hasSeconds = timeStr.length > 5;
+  const shifted = addMinutes(timeStr.slice(0, 5), deltaMinutes);
+  return hasSeconds ? `${shifted}:00` : shifted;
+}
+
+/** 시각 라벨을 더블클릭하면 그 자리에서 바로 시작 시각을 고칠 수 있게 한다. */
+function startEditSlotTime(timeEl, slot) {
+  if (isSlotTimeBooked(slot.start_time)) return toast('이미 예약이 있는 시간은 바꿀 수 없어요.');
+  const original = slot.start_time;
+  const input = document.createElement('input');
+  input.type = 'time';
+  input.className = 'wd-time-input';
+  input.value = original.slice(0, 5);
+  timeEl.replaceWith(input);
+  input.focus();
+
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    if (input.value) slot.start_time = `${input.value}:00`;
+    renderPatternGrid();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.value = original.slice(0, 5); input.blur(); }
+  });
+}
+
+/** 교시 시간범위(왼쪽 칸)를 더블클릭하면, 그 교시 안의 상담 슬롯 전체를 같은 간격을
+ * 유지한 채 한꺼번에 밀거나 당길 수 있다. */
+function startEditPeriodTime(rowTimeEl, group) {
+  if (group.slots.some(s => isSlotTimeBooked(s.start_time))) {
+    return toast('이미 예약이 있는 교시는 시간을 바꿀 수 없어요.');
+  }
+  const firstSlot = group.slots[0];
+  const original = firstSlot.start_time;
+  const input = document.createElement('input');
+  input.type = 'time';
+  input.className = 'wd-time-input';
+  input.value = original.slice(0, 5);
+  rowTimeEl.replaceWith(input);
+  input.focus();
+
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    if (input.value) {
+      const delta = hhmmToMinutes(input.value) - hhmmToMinutes(original.slice(0, 5));
+      if (delta !== 0) {
+        group.slots.forEach(s => { s.start_time = shiftTimeString(s.start_time, delta); });
+        if (firstSlot.period_range) {
+          const [rs, re] = firstSlot.period_range.split('~');
+          const newRange = `${addMinutes(rs, delta)}~${addMinutes(re, delta)}`;
+          group.slots.forEach(s => { s.period_range = newRange; });
+        }
+      }
+    }
+    renderPatternGrid();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.value = original.slice(0, 5); input.blur(); }
   });
 }
 

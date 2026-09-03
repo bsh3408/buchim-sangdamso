@@ -49,6 +49,8 @@ export function buildPresetSlots({
   periodCount = 6,
   breakMinutes = 10,
   consultMinutes = 20,
+  lunchAfterPeriod = null,
+  lunchMinutes = 50,
 }) {
   const classMinutes = PRESET_CLASS_MINUTES[preset];
   if (!classMinutes) {
@@ -58,7 +60,8 @@ export function buildPresetSlots({
   const slots = [];
   for (let period = 1; period <= periodCount; period++) {
     slots.push(...slicePeriod(cursor, classMinutes, consultMinutes, period));
-    cursor += classMinutes + breakMinutes;
+    const gap = period === lunchAfterPeriod ? lunchMinutes : breakMinutes;
+    cursor += classMinutes + gap;
   }
   return slots;
 }
