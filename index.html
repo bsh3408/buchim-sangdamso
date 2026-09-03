@@ -36,6 +36,7 @@ const PURPOSES = ['생활태도', '인성', '학업성취 및 성적', '진로�
 const MODE_LABEL = { phone: '전화', in_person: '방문' };
 const SCHOOL_LEVEL_SUFFIX = { elementary: '초등학교', middle: '중학교', high: '고등학교' };
 const SCHOOL_LEVEL_TO_PRESET = { elementary: 'elementary', middle: 'middle', high: 'high' };
+const DOW_KEYS = [1, 2, 3, 4, 5]; // JS Date#getDay() 기준 월=1 ~ 금=5
 
 function gradeClassLabel(grade, teacherClass) {
   return `${escapeHtml(String(grade ?? ''))}학년 ${escapeHtml(String(teacherClass ?? ''))}반`;
@@ -599,30 +600,57 @@ async function loadTeacherSchedule() {
   derivePatternFromDates();
 }
 
-/** 서버에 저장된 날짜들의 시간 구조·날짜별 열림 상태를 편집용 틀(periodPattern/dateOpen)로 되살린다. */
+/** 서버에 저장된 날짜들의 시간 구조·날짜별 열림 상태를 편집용 틀(periodPattern/dateOpen)로 되살린다.
+ * 요일마다 점심 위치가 다를 수 있으므로, 요일(월~금)별로 각각 구조를 되짚는다. */
 function derivePatternFromDates() {
   const entries = [...teacherState.dates.values()];
   if (entries.length === 0) {
     // 슬롯을 미리 만들어두지 않는다 — 선생님이 "시간표 만들기"를 직접 눌러야
     // 요일별 시간표가 나타난다(그래야 점심시간 등 직접 고른 설정이 항상 반영된다).
     if (!teacherState.periodPattern) {
-      teacherState.periodPattern = { preset: null, duration_minutes: 20, slots: [] };
+      teacherState.periodPattern = { preset: null, duration_minutes: 20, periodSlotsByDow: {}, extraSlots: [], lunch: null };
     }
     teacherState.dateOpen = {};
     return;
   }
 
-  // periodPattern.slots는 순전히 "교시 시간 구조"만 나타낸다. 실제 열림·방법 상태는 전부
+  // periodSlotsByDow/extraSlots는 순전히 "교시 시간 구조"만 나타낸다. 실제 열림·방법 상태는 전부
   // dateOpen 쪽 명시적인 값으로만 판단하므로, 여기서는 항상 닫힘을 기본값으로 둔다
   // (그렇지 않으면 기준으로 삼은 날짜의 상태가 다른 모든 날짜의 기본값으로 새어나간다).
   const base = entries[0];
-  const slots = base.slots.map(({ start_time, period, period_range, period_label }) =>
-    ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' }));
+  const cleanSlot = ({ start_time, period, period_range, period_label }) =>
+    ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' });
+
+  // 같은 요일의 날짜가 여러 개 저장돼 있으면, 그중 가장 먼저 만난 걸 그 요일의 기준 구조로 삼는다.
+  const byDowEntry = {};
+  for (const entry of entries) {
+    const dow = new Date(entry.date + 'T00:00:00').getDay();
+    if (!byDowEntry[dow]) byDowEntry[dow] = entry;
+  }
+
+  const extraSlots = base.slots.filter(s => !s.period).map(cleanSlot);
+  const periodSlotsByDow = {};
+  const lunchByDow = {};
+  for (const dow of DOW_KEYS) {
+    const entry = byDowEntry[dow] || base; // 저장된 날짜가 없는 요일은 일단 전체 기준 구조를 빌려 쓴다
+    const daySlots = entry.slots.filter(s => s.period).map(cleanSlot);
+    periodSlotsByDow[dow] = daySlots;
+    lunchByDow[dow] = inferLunchFromSlots(daySlots, entry.duration_minutes ?? base.duration_minutes);
+  }
+
+  const observedDows = Object.keys(byDowEntry).map(Number);
+  const refDow = observedDows[0] ?? 1;
+  const perWeekday = observedDows.length > 1 && observedDows.some((dow) => {
+    const a = lunchByDow[dow], b = lunchByDow[refDow];
+    return a.enabled !== b.enabled || a.afterPeriod !== b.afterPeriod || a.minutes !== b.minutes;
+  });
+
   teacherState.periodPattern = {
     preset: base.preset,
     duration_minutes: base.duration_minutes,
-    slots,
-    lunch: inferLunchFromSlots(slots, base.duration_minutes),
+    periodSlotsByDow,
+    extraSlots,
+    lunch: { perWeekday, shared: lunchByDow[refDow], byDow: lunchByDow },
   };
 
   // dateOpen은 날짜 -> 상담 슬롯(시작 시각)마다 따로 상태를 기억한다. 한 교시 안에 상담이
@@ -655,6 +683,29 @@ function inferLunchFromSlots(slots, durationMinutes) {
   }
   if (best && best.gap >= 25) return { enabled: true, afterPeriod: best.afterPeriod, minutes: best.gap };
   return { enabled: false };
+}
+
+function defaultDayLunch() { return { enabled: false, afterPeriod: 4, minutes: 50 }; }
+function defaultLunchState() {
+  const byDow = {};
+  for (const d of DOW_KEYS) byDow[d] = defaultDayLunch();
+  return { perWeekday: false, shared: defaultDayLunch(), byDow };
+}
+
+/** "요일마다 다르게"가 꺼져 있으면 모든 요일이 공통 설정(shared)을 쓰고, 켜져 있으면
+ * 요일별로 따로 둔 설정(byDow)을 쓴다. */
+function lunchFor(pattern, dow) {
+  if (!pattern.lunch) return null;
+  return pattern.lunch.perWeekday ? (pattern.lunch.byDow[dow] || defaultDayLunch()) : pattern.lunch.shared;
+}
+
+/** 이 요일에 실제로 쓰이는 슬롯 전체(교시 슬롯 + 방과후/직접설정 슬롯, 뒤엣것은 요일 공통)를 돌려준다. */
+function slotsForDow(pattern, dow) {
+  return [...(pattern.periodSlotsByDow?.[dow] || []), ...(pattern.extraSlots || [])];
+}
+
+function hasAnyPatternSlots(pattern) {
+  return DOW_KEYS.some(d => (pattern.periodSlotsByDow?.[d]?.length || 0) > 0) || (pattern.extraSlots?.length || 0) > 0;
 }
 
 function renderTeacherDashboard() {
@@ -729,38 +780,76 @@ async function toggleDate(dateStr) {
   renderAvailabilityEditor();
 }
 
-/** 폼에 입력된 값대로 교시 시간 구조(pattern.slots)를 다시 만든다. 점심시간을 드래그로
- * 옮길 때도 "몇 교시 뒤" 값만 바꾼 뒤 이 함수를 다시 불러 재사용한다. */
+/** 폼에 입력된 값대로 요일별 교시 시간 구조(periodSlotsByDow)를 다시 만든다. 점심시간을
+ * 드래그로 옮길 때도 해당 요일의 "몇 교시 뒤" 값만 바꾼 뒤 이 함수를 다시 불러 재사용한다. */
 function runGenerate() {
   const pattern = teacherState.periodPattern;
   const preset = $('#presetSelect').value;
   const consultMinutes = Number($('#consultMinutes').value) || 20;
-  let slots;
-  if (preset === 'custom') {
-    slots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
-    pattern.lunch = null;
-  } else {
-    const lunchEnabled = $('#lunchEnable').checked;
-    const lunchAfterPeriod = lunchEnabled ? (Number($('#lunchAfter').value) || null) : null;
-    const lunchMinutes = Number($('#lunchMinutes').value) || 50;
-    slots = buildPresetSlots({
-      preset, startTime: $('#presetStart').value || '09:00', periodCount: Number($('#periodCount').value) || 6,
-      consultMinutes, lunchAfterPeriod, lunchMinutes,
-    });
-    pattern.lunch = lunchAfterPeriod ? { enabled: true, afterPeriod: lunchAfterPeriod, minutes: lunchMinutes } : { enabled: false };
-  }
   pattern.preset = preset;
   pattern.duration_minutes = consultMinutes;
-  pattern.slots = slots;
+
+  if (preset === 'custom') {
+    pattern.periodSlotsByDow = Object.fromEntries(DOW_KEYS.map(d => [d, []]));
+    pattern.extraSlots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
+    pattern.lunch = null;
+    renderPatternGrid();
+    return;
+  }
+
+  const startTime = $('#presetStart').value || '09:00';
+  const periodCount = Number($('#periodCount').value) || 6;
+  const lunchOn = $('#lunchEnable').checked;
+  const perWeekday = lunchOn && Boolean($('#lunchPerWeekday')?.checked);
+
+  if (!pattern.lunch) pattern.lunch = defaultLunchState();
+  pattern.lunch.perWeekday = perWeekday;
+
+  if (!lunchOn) {
+    pattern.lunch.shared = { ...pattern.lunch.shared, enabled: false };
+    for (const d of DOW_KEYS) pattern.lunch.byDow[d] = { ...pattern.lunch.byDow[d], enabled: false };
+  } else if (!perWeekday) {
+    pattern.lunch.shared = { enabled: true, afterPeriod: Number($('#lunchAfter').value) || 4, minutes: Number($('#lunchMinutes').value) || 50 };
+  } else {
+    for (const d of DOW_KEYS) {
+      pattern.lunch.byDow[d] = {
+        enabled: $(`#lunchEnable-${d}`)?.checked || false,
+        afterPeriod: Number($(`#lunchAfter-${d}`)?.value) || 4,
+        minutes: Number($(`#lunchMinutes-${d}`)?.value) || 50,
+      };
+    }
+  }
+
+  pattern.periodSlotsByDow = {};
+  for (const d of DOW_KEYS) {
+    const lc = lunchFor(pattern, d);
+    pattern.periodSlotsByDow[d] = buildPresetSlots({
+      preset, startTime, periodCount, consultMinutes,
+      lunchAfterPeriod: lc?.enabled ? lc.afterPeriod : null,
+      lunchMinutes: lc?.minutes || 50,
+    });
+  }
   renderPatternGrid();
 }
 
-/** 점심시간 줄을 다른 교시 사이로 옮긴다(드래그 앤 드롭으로 놓았을 때 호출). */
-function moveLunch(newAfterPeriod) {
+/** 점심시간 줄을 다른 교시 사이로 옮긴다(드래그 앤 드롭으로 놓았을 때 호출). dow가 없으면
+ * "요일마다 다르게"가 꺼져 있는 것이므로 공통 설정을 옮긴다. */
+function moveLunch(dow, newAfterPeriod) {
   const pattern = teacherState.periodPattern;
-  if (!pattern.lunch?.enabled || pattern.lunch.afterPeriod === newAfterPeriod) return;
-  const input = $('#lunchAfter');
-  if (input) input.value = newAfterPeriod;
+  if (!pattern.lunch) return;
+  if (pattern.lunch.perWeekday && dow) {
+    const lc = pattern.lunch.byDow[dow];
+    if (!lc?.enabled || lc.afterPeriod === newAfterPeriod) return;
+    lc.afterPeriod = newAfterPeriod;
+    const input = $(`#lunchAfter-${dow}`);
+    if (input) input.value = newAfterPeriod;
+  } else {
+    const lc = pattern.lunch.shared;
+    if (!lc?.enabled || lc.afterPeriod === newAfterPeriod) return;
+    lc.afterPeriod = newAfterPeriod;
+    const input = $('#lunchAfter');
+    if (input) input.value = newAfterPeriod;
+  }
   runGenerate();
   toast(`점심시간을 ${newAfterPeriod}교시 뒤로 옮겼어요`);
 }
@@ -768,6 +857,26 @@ function moveLunch(newAfterPeriod) {
 function renderAvailabilityPatternEditor() {
   const pattern = teacherState.periodPattern;
   const editor = $('#ta-editor');
+  const lunchState = pattern.lunch || defaultLunchState();
+  const perWeekday = Boolean(lunchState.perWeekday);
+  const shared = lunchState.shared || defaultDayLunch();
+  const anyDayEnabled = DOW_KEYS.some(d => lunchState.byDow?.[d]?.enabled);
+  const masterEnabled = Boolean(shared.enabled) || anyDayEnabled;
+  const dayRowsHtml = DOW_KEYS.map(d => {
+    const lc = lunchState.byDow?.[d] || defaultDayLunch();
+    return `
+      <div class="tt-lunch-day-row">
+        <label class="tt-lunch-day-check">
+          <input type="checkbox" id="lunchEnable-${d}" ${lc.enabled ? 'checked' : ''}>
+          <span>${WEEKDAY_LABELS[d]}</span>
+        </label>
+        <input type="number" id="lunchAfter-${d}" min="1" max="10" value="${lc.afterPeriod || shared.afterPeriod || 4}">
+        <span class="tt-lunch-day-sep">교시 뒤</span>
+        <input type="number" id="lunchMinutes-${d}" min="10" max="120" value="${lc.minutes || shared.minutes || 50}">
+        <span class="tt-lunch-day-sep">분</span>
+      </div>`;
+  }).join('');
+
   editor.innerHTML = `
     <div class="tt-generator">
       <div class="field">
@@ -789,15 +898,24 @@ function renderAvailabilityPatternEditor() {
       </div>
       <div class="field"><label>상담시간(분)</label><input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}"></div>
 
-      <label class="tt-lunch-toggle" for="lunchEnable">
-        <input type="checkbox" id="lunchEnable" ${pattern.lunch?.enabled ? 'checked' : ''}>
-        <span>🍱 점심시간 넣기</span>
-      </label>
-      <div class="row" id="lunchControls" style="display:${pattern.lunch?.enabled ? 'flex' : 'none'};">
-        <div class="field"><label>몇 교시 뒤</label><input type="number" id="lunchAfter" min="1" max="10" value="${pattern.lunch?.afterPeriod || 4}"></div>
-        <div class="field"><label>점심시간(분)</label><input type="number" id="lunchMinutes" min="10" max="120" value="${pattern.lunch?.minutes || 50}"></div>
+      <div id="lunchSection">
+        <label class="tt-lunch-toggle" for="lunchEnable">
+          <input type="checkbox" id="lunchEnable" ${masterEnabled ? 'checked' : ''}>
+          <span>🍱 점심시간 넣기</span>
+        </label>
+        <div id="lunchBody" style="display:${masterEnabled ? 'block' : 'none'};">
+          <label class="tt-lunch-perday-toggle" for="lunchPerWeekday">
+            <input type="checkbox" id="lunchPerWeekday" ${perWeekday ? 'checked' : ''}>
+            <span>요일마다 다르게 설정</span>
+          </label>
+          <div class="row" id="lunchControls" style="display:${perWeekday ? 'none' : 'flex'};">
+            <div class="field"><label>몇 교시 뒤</label><input type="number" id="lunchAfter" min="1" max="10" value="${shared.afterPeriod || 4}"></div>
+            <div class="field"><label>점심시간(분)</label><input type="number" id="lunchMinutes" min="10" max="120" value="${shared.minutes || 50}"></div>
+          </div>
+          <div class="tt-lunch-days" id="lunchPerDayForm" style="display:${perWeekday ? 'flex' : 'none'};">${dayRowsHtml}</div>
+          <p class="hint" style="margin:2px 0 4px;">시간표를 만든 뒤엔 점심시간 줄을 손으로 눌러 끌면 다른 교시 사이로 옮길 수 있어요.</p>
+        </div>
       </div>
-      <p class="hint" style="margin:2px 0 4px;">시간표를 만든 뒤엔 점심시간 줄을 손으로 눌러 끌면 다른 교시 사이로 옮길 수 있어요.</p>
 
       <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin:8px 0;">➕ 방과후 상담 추가</button>
       <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:10px;">
@@ -819,11 +937,17 @@ function renderAvailabilityPatternEditor() {
     const custom = $('#presetSelect').value === 'custom';
     $('#presetRange').style.display = custom ? 'flex' : 'none';
     $('#customRange').style.display = custom ? 'flex' : 'none';
+    $('#lunchSection').style.display = custom ? 'none' : 'block';
   };
   syncPresetVisibility();
   $('#presetSelect').addEventListener('change', syncPresetVisibility);
   $('#lunchEnable').addEventListener('change', () => {
-    $('#lunchControls').style.display = $('#lunchEnable').checked ? 'flex' : 'none';
+    $('#lunchBody').style.display = $('#lunchEnable').checked ? 'block' : 'none';
+  });
+  $('#lunchPerWeekday').addEventListener('change', () => {
+    const per = $('#lunchPerWeekday').checked;
+    $('#lunchControls').style.display = per ? 'none' : 'flex';
+    $('#lunchPerDayForm').style.display = per ? 'flex' : 'none';
   });
 
   $('#generateBtn').addEventListener('click', runGenerate);
@@ -837,10 +961,11 @@ function renderAvailabilityPatternEditor() {
     if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
     const consultMinutes = pattern.duration_minutes || 20;
     const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
-    const existingStarts = new Set(pattern.slots.map(s => s.start_time));
+    if (!pattern.extraSlots) pattern.extraSlots = [];
+    const existingStarts = new Set(pattern.extraSlots.map(s => s.start_time));
     const toAdd = newSlots.filter(s => !existingStarts.has(s.start_time));
     if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
-    pattern.slots.push(...toAdd);
+    pattern.extraSlots.push(...toAdd);
     $('#afterschoolForm').style.display = 'none';
     renderPatternGrid();
   });
@@ -912,8 +1037,7 @@ function groupSelectedByWeek() {
 function renderPatternGrid() {
   const pattern = teacherState.periodPattern;
   const container = $('#weekdayGrid');
-  const groups = groupByPeriod(pattern.slots);
-  if (groups.length === 0) { container.innerHTML = '<p class="hint">먼저 위에서 시간표를 만들어주세요.</p>'; return; }
+  if (!hasAnyPatternSlots(pattern)) { container.innerHTML = '<p class="hint">먼저 위에서 시간표를 만들어주세요.</p>'; return; }
 
   const weeks = groupSelectedByWeek();
   if (weeks.size === 0) {
@@ -921,9 +1045,18 @@ function renderPatternGrid() {
     return;
   }
 
+  // 참고용 구조: 교시 개수·소슬롯 개수는 모든 요일이 같고(점심 위치로 "시각"만 달라진다),
+  // 방과후/직접설정 슬롯은 요일 공통이라 어느 요일을 기준으로 잡아도 같다.
+  const refDow = DOW_KEYS.find(d => (pattern.periodSlotsByDow?.[d]?.length || 0) > 0) || DOW_KEYS[0];
+  const groups = groupByPeriod(slotsForDow(pattern, refDow));
   const periodNumbers = groups.map(g => g.period).filter(Boolean);
   const maxPeriod = periodNumbers.length ? Math.max(...periodNumbers) : 0;
-  const lunch = pattern.lunch?.enabled ? pattern.lunch : null;
+  const perWeekday = Boolean(pattern.lunch?.perWeekday);
+  const lunchBoundaries = new Set();
+  for (const d of DOW_KEYS) {
+    const lc = lunchFor(pattern, d);
+    if (lc?.enabled) lunchBoundaries.add(lc.afterPeriod);
+  }
 
   const sortedWeekKeys = [...weeks.keys()].sort();
   let html = '';
@@ -949,7 +1082,15 @@ function renderPatternGrid() {
       const end = addMinutes(lastSlot.start_time.slice(0, 5), pattern.duration_minutes || 20);
       const range = group.period_range || `${start}~${end}`;
 
-      group.slots.forEach((slot, subIdx) => {
+      // 요일마다 이 교시의 그룹을 미리 찾아둔다(방과후 등 요일-공통 슬롯은 이 group을 그대로 쓴다).
+      const dayGroups = {};
+      if (group.period) {
+        for (let w = 1; w <= 5; w++) {
+          dayGroups[w] = groupByPeriod(pattern.periodSlotsByDow?.[w] || []).find(g => g.period === group.period) || group;
+        }
+      }
+
+      group.slots.forEach((refSlot, subIdx) => {
         html += '<tr>';
         if (subIdx === 0) {
           html += `<th class="wd-row-head" rowspan="${group.slots.length}" data-period-key="${groupKey}">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span><span class="wd-edit-icon">✏️</span></th>`;
@@ -957,6 +1098,7 @@ function renderPatternGrid() {
         for (let w = 1; w <= 5; w++) {
           const date = days[w];
           if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+          const slot = group.period ? (dayGroups[w].slots[subIdx] || refSlot) : refSlot;
           const booked = isDateSlotBooked(date, slot.start_time);
           const state = getEffectiveDateState(date, slot.start_time, slot);
           const cls = ['wd-cell'];
@@ -978,13 +1120,29 @@ function renderPatternGrid() {
         html += '</tr>';
       });
 
-      if (group.period && group.period < maxPeriod) {
-        if (lunch && lunch.afterPeriod === group.period) {
+      if (group.period && group.period < maxPeriod && lunchBoundaries.has(group.period)) {
+        if (!perWeekday) {
+          // 공통 설정이므로 모든 요일이 같은 자리 — 기존처럼 통짜 바 하나로 보여준다.
+          const lc = pattern.lunch.shared;
           html += `<tr class="wd-lunch-row" data-after-period="${group.period}">
-            <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lunch.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
+            <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
           </tr>`;
-        } else if (lunch) {
-          html += `<tr class="wd-lunch-dropzone" data-after-period="${group.period}"><td colspan="6"><div class="wd-lunch-dropzone-bar"></div></td></tr>`;
+        } else {
+          // 요일마다 다르므로 칸을 나눠, 그 요일의 점심이 여기 있으면 알약을, 아니면 놓을 자리를 보여준다.
+          html += `<tr class="wd-lunch-row-multi"><th class="wd-row-head wd-row-head--lunch">🍱<br><span class="wd-row-time">점심</span></th>`;
+          for (let w = 1; w <= 5; w++) {
+            const date = days[w];
+            if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+            const lc = lunchFor(pattern, w);
+            if (lc?.enabled && lc.afterPeriod === group.period) {
+              html += `<td class="wd-lunch-cell-td"><div class="wd-lunch-cell wd-lunch-cell--mini" data-dow="${w}" data-after-period="${group.period}">🍱 ${lc.minutes}분<span class="wd-lunch-handle">⠿</span></div></td>`;
+            } else if (lc?.enabled) {
+              html += `<td class="wd-lunch-dropzone-td" data-dow="${w}" data-after-period="${group.period}"><div class="wd-lunch-dropzone-bar"></div></td>`;
+            } else {
+              html += `<td class="wd-cell wd-cell--empty"></td>`;
+            }
+          }
+          html += '</tr>';
         }
       }
     }
@@ -992,12 +1150,14 @@ function renderPatternGrid() {
   });
   container.innerHTML = html;
   teacherState.justChangedKey = null;
-  wireLunchDrag(container);
+  wireLunchDrag(container, perWeekday);
 
   $$('.wd-cell:not(.wd-cell--booked):not(.wd-cell--empty)', container).forEach(cell => {
     const date = cell.dataset.date;
     const startTime = cell.dataset.start;
-    const slot = pattern.slots.find(s => s.start_time === startTime);
+    const dow = new Date(date + 'T00:00:00').getDay();
+    const slot = slotsForDow(pattern, dow).find(s => s.start_time === startTime);
+    if (!slot) return;
     cell.addEventListener('click', (e) => {
       const methodTag = e.target.closest('.wd-method-tag');
       if (methodTag) {
@@ -1015,7 +1175,7 @@ function renderPatternGrid() {
     });
   });
 
-  $$('.wd-row-head', container).forEach(th => {
+  $$('.wd-row-head[data-period-key]', container).forEach(th => {
     const rawKey = th.dataset.periodKey;
     const key = /^\d+$/.test(rawKey) ? Number(rawKey) : rawKey;
     const group = groups.find(g => (g.period ?? (g.period_label ?? 'custom')) === key);
@@ -1023,41 +1183,56 @@ function renderPatternGrid() {
   });
 }
 
-/** 점심시간 줄을 손가락/마우스로 눌러 끌면, 지나가는 자리(드롭존)가 밝아지고
- * 놓으면 그 교시 뒤로 옮겨진다. 포인터 이벤트라 마우스·터치 모두에서 동작한다. */
-function wireLunchDrag(container) {
-  const lunchRow = $('.wd-lunch-row', container);
-  if (!lunchRow) return;
-  const zones = $$('.wd-lunch-dropzone', container);
-  const handle = $('.wd-lunch-cell', lunchRow);
+/** 점심시간 줄(또는 요일별 알약)을 손가락/마우스로 눌러 끌면, 지나가는 자리(드롭존)가
+ * 밝아지고 놓으면 그 교시 뒤로 옮겨진다. 포인터 이벤트라 마우스·터치 모두에서 동작한다. */
+function wireLunchDrag(container, perWeekday) {
+  if (!perWeekday) {
+    const lunchRow = $('.wd-lunch-row', container);
+    if (!lunchRow) return;
+    const zones = $$('.wd-lunch-dropzone', container);
+    const handle = $('.wd-lunch-cell', lunchRow);
+    wirePointerDrag(handle, lunchRow, zones, '.wd-lunch-dropzone', (zone) => moveLunch(null, Number(zone.dataset.afterPeriod)));
+    return;
+  }
+  $$('.wd-lunch-cell--mini', container).forEach((pill) => {
+    const dow = pill.dataset.dow;
+    const cell = pill.closest('td');
+    const zones = $$(`.wd-lunch-dropzone-td[data-dow="${dow}"]`, container);
+    wirePointerDrag(pill, cell, zones, `.wd-lunch-dropzone-td[data-dow="${dow}"]`, (zone) => moveLunch(Number(dow), Number(zone.dataset.afterPeriod)));
+  });
+}
 
+/** 공용 포인터 드래그: handle을 누른 채 끌면 zoneSelector에 맞는 자리가 지나갈 때마다
+ * 밝아지고, 놓았을 때 그 자리 위였다면 onDrop(zone)을 부른다. */
+function wirePointerDrag(handle, moveEl, zones, zoneSelector, onDrop) {
   handle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     handle.setPointerCapture(e.pointerId);
-    lunchRow.classList.add('wd-lunch-row--dragging');
+    moveEl.classList.add('wd-lunch-row--dragging');
     const startY = e.clientY;
     let activeZone = null;
 
-    lunchRow.style.pointerEvents = 'none'; // 드래그 중엔 자기 자신 밑에 뭐가 있는지 봐야 하므로 히트테스트에서 빠진다
+    moveEl.style.pointerEvents = 'none'; // 드래그 중엔 자기 자신 밑에 뭐가 있는지 봐야 하므로 히트테스트에서 빠진다
     const onMove = (ev) => {
-      lunchRow.style.transform = `translateY(${ev.clientY - startY}px)`;
+      moveEl.style.transform = `translateY(${ev.clientY - startY}px)`;
       const under = document.elementFromPoint(ev.clientX, ev.clientY);
-      const zone = under?.closest('.wd-lunch-dropzone');
+      const hit = under?.closest(zoneSelector);
+      const zone = hit && zones.includes(hit) ? hit : null;
       if (zone !== activeZone) {
         activeZone?.classList.remove('wd-lunch-dropzone--active');
-        activeZone = zone || null;
+        activeZone = zone;
         activeZone?.classList.add('wd-lunch-dropzone--active');
       }
     };
     const onUp = () => {
-      lunchRow.classList.remove('wd-lunch-row--dragging');
-      lunchRow.style.transform = '';
-      lunchRow.style.pointerEvents = '';
+      moveEl.classList.remove('wd-lunch-row--dragging');
+      moveEl.style.transform = '';
+      moveEl.style.pointerEvents = '';
       zones.forEach(z => z.classList.remove('wd-lunch-dropzone--active'));
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onUp);
       handle.removeEventListener('pointercancel', onUp);
-      if (activeZone) moveLunch(Number(activeZone.dataset.afterPeriod));
+      if (activeZone) onDrop(activeZone);
     };
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp);
@@ -1131,26 +1306,32 @@ function startEditSlotTime(slot) {
   });
 }
 
-/** 교시 하나를 누르면, 그 교시 안의 상담 슬롯 전체를 같은 간격을 유지한 채 한꺼번에
- * 밀거나 당길 수 있다. */
+/** 교시 하나를 누르면, 그 교시 안의 상담 슬롯 전체(요일마다 다르게 설정했다면 모든 요일의
+ * 같은 교시가 함께)를 같은 간격을 유지한 채 한꺼번에 밀거나 당길 수 있다. */
 function startEditPeriodTime(group) {
-  if (group.slots.some(s => isSlotTimeBooked(s.start_time))) {
+  const pattern = teacherState.periodPattern;
+  const allSlots = group.period
+    ? DOW_KEYS.flatMap(d => groupByPeriod(pattern.periodSlotsByDow?.[d] || []).find(g => g.period === group.period)?.slots || [])
+    : group.slots;
+  if (allSlots.some(s => isSlotTimeBooked(s.start_time))) {
     return toast('이미 예약이 있는 교시는 시간을 바꿀 수 없어요.');
   }
   const firstSlot = group.slots[0];
   const label = group.period_label || (group.period ? `${group.period}교시` : '이 시간대');
   openTimeEditModal({
     title: `${label} 시간 조정`,
-    subtitle: '이 교시 안의 상담 슬롯 전체가 같은 간격을 유지한 채 함께 옮겨져요',
+    subtitle: group.period
+      ? '이 교시 안의 모든 요일 상담 슬롯이 같은 간격을 유지한 채 함께 옮겨져요'
+      : '이 교시 안의 상담 슬롯 전체가 같은 간격을 유지한 채 함께 옮겨져요',
     currentTime: firstSlot.start_time.slice(0, 5),
     onApply: (newTime) => {
       const delta = hhmmToMinutes(newTime.slice(0, 5)) - hhmmToMinutes(firstSlot.start_time.slice(0, 5));
       if (delta !== 0) {
-        group.slots.forEach(s => { s.start_time = shiftTimeString(s.start_time, delta); });
+        allSlots.forEach(s => { s.start_time = shiftTimeString(s.start_time, delta); });
         if (firstSlot.period_range) {
           const [rs, re] = firstSlot.period_range.split('~');
           const newRange = `${addMinutes(rs, delta)}~${addMinutes(re, delta)}`;
-          group.slots.forEach(s => { s.period_range = newRange; });
+          allSlots.forEach(s => { s.period_range = newRange; });
         }
       }
       renderPatternGrid();
@@ -1162,10 +1343,11 @@ async function saveAvailability() {
   const pattern = teacherState.periodPattern;
   const selected = [...teacherState.selectedDates];
   if (selected.length === 0) return toast('먼저 달력에서 날짜를 골라주세요');
-  if (pattern.slots.length === 0) return toast('먼저 시간표 만들기를 눌러주세요');
+  if (!hasAnyPatternSlots(pattern)) return toast('먼저 시간표 만들기를 눌러주세요');
   try {
     for (const d of selected) {
-      const slotsForDate = pattern.slots.map((slot) => {
+      const dow = new Date(d + 'T00:00:00').getDay();
+      const slotsForDate = slotsForDow(pattern, dow).map((slot) => {
         const state = getEffectiveDateState(d, slot.start_time, slot);
         const { start_time, period, period_range, period_label } = slot;
         return { start_time, period, period_range, period_label, is_open: state.is_open, mode: state.mode };
