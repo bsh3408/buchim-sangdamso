@@ -70,6 +70,7 @@ h3 { font-size:15px; font-weight:600; margin:0 0 8px; color:var(--text); }
   transition:all .18s; font-family:inherit;
 }
 .btn:disabled { opacity:.5; cursor:not-allowed; }
+.btn:active:not(:disabled) { transform:scale(.96); }
 .btn-primary { background:var(--primary); color:#fff; box-shadow:0 3px 10px rgba(191,91,53,.28); }
 .btn-primary:hover:not(:disabled) { background:var(--primary-dark); transform:translateY(-1px); box-shadow:0 6px 16px rgba(191,91,53,.32); }
 .btn-secondary { background:var(--primary-soft); color:var(--primary); }
@@ -101,6 +102,7 @@ textarea { resize:vertical; min-height:90px; }
   cursor:pointer; transition:all .18s; display:flex; align-items:center; gap:18px; border:2px solid transparent;
 }
 .home-choice:hover { border-color:var(--primary); transform:translateY(-3px); box-shadow:var(--shadow-soft); }
+.home-choice:active { transform:scale(.98); }
 .home-choice .icon {
   width:52px; height:52px; border-radius:16px; background:var(--primary-soft); color:var(--primary);
   display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;
@@ -118,6 +120,7 @@ textarea { resize:vertical; min-height:90px; }
   cursor:pointer; text-align:center; min-width:72px; transition:all .15s;
 }
 .date-chip.selected { border-color:var(--primary); background:var(--primary); color:#fff; }
+.date-chip:active { transform:scale(.94); }
 .date-chip .dow { font-size:11px; opacity:.75; margin-bottom:2px; }
 .date-chip .dd { font-size:16px; font-weight:700; }
 
@@ -135,6 +138,7 @@ textarea { resize:vertical; min-height:90px; }
 }
 .choice.selected { border-color:var(--primary); background:var(--primary-soft); color:var(--primary); font-weight:700; }
 .choice.disabled { opacity:.4; cursor:not-allowed; }
+.choice:active:not(.disabled) { transform:scale(.95); }
 
 .modal-bg {
   position:fixed; inset:0; background:rgba(42,30,18,.55); display:flex; align-items:flex-end; justify-content:center;
@@ -216,30 +220,47 @@ textarea { resize:vertical; min-height:90px; }
 .period-label { display:flex; justify-content:space-between; align-items:baseline; padding:4px 2px; margin-bottom:8px; }
 .period-label strong { font-family:var(--font-display); font-size:13px; color:var(--chalk); }
 .period-label span { font-size:12px; color:var(--chalk-dim); opacity:.8; }
-.cb-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px,1fr)); gap:14px; }
-.cb-slot {
-  position:relative; min-height:82px; border:2px dashed #9c7c54; border-radius:8px;
-  display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--chalk-dim); font-size:13px;
-  font-weight:500; cursor:pointer; user-select:none; text-align:center; padding:8px 6px; gap:5px;
-  transition:border-color .15s, transform .15s;
-}
-.cb-slot::before {
-  content:""; position:absolute; top:-5px; left:50%; transform:translateX(-50%);
-  width:8px; height:8px; border-radius:50%; background:#cdb99f;
-  box-shadow:0 2px 3px rgba(20,12,6,.4);
-}
-.cb-slot:hover { border-color:#c9a878; transform:translateY(-1px); }
-.cb-slot.cb-slot--open { border-color:var(--success); }
-.cb-slot.cb-slot--open::before { background:var(--success); }
-.cb-slot.cb-slot--closed { opacity:.35; cursor:not-allowed; border-style:solid; }
-.cb-slot .cb-time { opacity:.9; font-size:14px; }
-.cb-slot .cb-methods { display:flex; gap:5px; justify-content:center; flex-wrap:wrap; }
 .cb-method-tag {
   font-size:11px; padding:3px 8px; border-radius:20px; font-weight:600;
   background:rgba(255,255,255,.1); color:var(--chalk); border:1px solid #9c7c54;
 }
 .cb-method-tag.m-visit { background:rgba(240,182,110,.18); border-color:#e0b06e; color:#f0d6a8; }
 .cb-method-tag.m-phone { background:rgba(122,181,213,.18); border-color:#7ab5d5; color:#bfe0f0; }
+
+/* ---- 학부모 시간표: 시각이 또렷한 한 줄 목록(교사 화면과 같은 방식) ---- */
+.pt-slot-list { display:flex; flex-direction:column; gap:8px; }
+.pt-slot-row {
+  position:relative; display:flex; align-items:center; gap:10px; padding:12px 14px;
+  border-radius:10px; border:1.5px dashed #9c7c54; background:rgba(255,255,255,.05);
+  user-select:none; transition:border-color .15s, transform .12s, background .15s;
+}
+.pt-slot-row::before {
+  content:""; width:8px; height:8px; border-radius:50%; background:#cdb99f; flex-shrink:0;
+  box-shadow:0 2px 3px rgba(20,12,6,.4);
+}
+.pt-slot-time {
+  font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--chalk); flex-shrink:0;
+  font-variant-numeric: tabular-nums;
+}
+.pt-slot-time-end { font-family:"Pretendard","Noto Sans KR",sans-serif; font-size:12px; font-weight:400; color:var(--chalk-dim); margin-left:2px; }
+.pt-slot-row .cb-methods { flex-wrap:wrap; }
+.pt-slot-cta, .pt-slot-status { margin-left:auto; font-size:12.5px; color:var(--chalk-dim); flex-shrink:0; white-space:nowrap; }
+.pt-slot-row--open { cursor:pointer; border-color:var(--success); }
+.pt-slot-row--open::before { background:var(--success); }
+.pt-slot-row--open:hover { border-color:#7fc79a; background:rgba(255,255,255,.09); transform:translateX(3px); }
+.pt-slot-row--open:active { transform:translateX(3px) scale(.97); }
+.pt-slot-row--closed { opacity:.4; border-style:solid; }
+.pt-slot-row--booked {
+  cursor:pointer; border-style:solid; border-color:var(--postit); background:rgba(255,226,122,.07);
+}
+.pt-slot-row--booked:active { transform:scale(.97); }
+.postit.postit--row {
+  position:static; inset:auto; width:auto; height:auto; margin-left:auto; flex-direction:row;
+  gap:6px; padding:5px 12px 5px 14px; border-radius:20px; box-shadow:0 2px 8px rgba(20,12,6,.35);
+  font-size:12px; opacity:1;
+}
+.postit--row::after { display:none; }
+.postit--row small { font-weight:600; opacity:.75; font-size:10.5px; }
 
 /* ---- 담임 설정: 시간표 만들기 카드 ---- */
 .tt-generator {
@@ -269,11 +290,18 @@ textarea { resize:vertical; min-height:90px; }
 .wd-row-head:hover { background:var(--primary-soft); }
 .wd-row-time { font-weight:400; color:var(--text-muted); font-size:10px; }
 .wd-edit-icon { display:block; font-size:11px; opacity:.6; margin-top:2px; }
-.wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:#fff; transition:background .12s; }
+.wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:#fff; transition:background .12s, transform .1s; position:relative; }
 .wd-cell:hover { background:var(--primary-soft); }
+.wd-cell:active { transform:scale(.93); }
 .wd-cell--open { background:var(--success-soft); }
 .wd-cell--booked { background:#fde3dc; cursor:not-allowed; }
 .wd-cell--empty { background:repeating-linear-gradient(135deg, var(--disabled), var(--disabled) 4px, #fff 4px, #fff 8px); cursor:default; }
+@keyframes cellPulse {
+  0% { box-shadow: inset 0 0 0 2px var(--primary), 0 0 0 0 rgba(191,91,53,.45); }
+  70% { box-shadow: inset 0 0 0 2px transparent, 0 0 0 9px rgba(191,91,53,0); }
+  100% { box-shadow: inset 0 0 0 2px transparent, 0 0 0 0 rgba(191,91,53,0); }
+}
+.wd-cell--pulse { animation: cellPulse .5s ease-out; z-index:1; }
 .wd-cell-time { font-size:10px; color:var(--text-muted); margin-bottom:2px; cursor:text; }
 .wd-cell-time:hover { text-decoration:underline dotted; }
 .wd-cell-label { font-size:11px; color:var(--text-muted); }
@@ -325,8 +353,9 @@ textarea { resize:vertical; min-height:90px; }
 .cal-day--empty { visibility:hidden; }
 .cal-day button {
   position:relative; width:36px; height:36px; border-radius:50%; border:1.5px solid transparent; background:transparent;
-  font-size:13px; font-family:inherit; color:var(--text); cursor:pointer; transition:background .12s, color .12s;
+  font-size:13px; font-family:inherit; color:var(--text); cursor:pointer; transition:background .12s, color .12s, transform .1s;
 }
+.cal-day button:active:not(:disabled) { transform:scale(.85); }
 .cal-day button.sun { color:var(--danger); }
 .cal-day button.sat { color:#2b6cb0; }
 .cal-day button:disabled { opacity:.3; cursor:not-allowed; }

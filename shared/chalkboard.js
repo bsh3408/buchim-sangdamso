@@ -1,4 +1,4 @@
-// shared/chalkboard.js — 칠판 + 포스트잇 시간표 렌더링
+// shared/chalkboard.js — 코르크보드 + 포스트잇 시간표 렌더링
 import { escapeHtml } from './escape.js';
 
 const MODE_LABEL = { phone: '전화', in_person: '방문', both: '방문·전화' };
@@ -8,29 +8,39 @@ function methodTagsHtml(mode) {
   return `<div class="cb-methods">${modes.map(m => `<span class="cb-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}">${MODE_LABEL[m]}</span>`).join('')}</div>`;
 }
 
-/** 학부모 시간표: 열림/예약됨/닫힘 3가지 상태로 칠판 칸을 그린다. */
-export function renderParentSlotGrid(container, slots, handlers) {
+function addMinutesLocal(hhmm, minutes) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = h * 60 + m + minutes;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** 학부모 시간표: 열림/예약됨/닫힘을 시각이 또렷이 보이는 한 줄짜리 목록으로 그린다.
+ * (선생님 화면의 요일별 시간표와 같은 방식 — 칸마다 시작~종료 시각이 먼저 보인다.) */
+export function renderParentSlotGrid(container, slots, handlers, durationMinutes) {
   container.innerHTML = '';
-  container.classList.add('cb-grid');
+  container.classList.add('pt-slot-list');
   for (const slot of slots) {
     const el = document.createElement('div');
-    el.className = 'cb-slot';
     el.dataset.slotId = slot.slot_id ?? '';
     el.dataset.startTime = slot.start_time;
 
     const filled = Boolean(slot.occupied);
     const open = Boolean(slot.is_open ?? true) && !filled;
+    const start = slot.start_time.slice(0, 5);
+    const end = addMinutesLocal(start, durationMinutes || 20);
+    const timeHtml = `<span class="pt-slot-time">${start}<span class="pt-slot-time-end">~${end}</span></span>`;
 
     if (filled) {
-      el.innerHTML = `<div class="postit stuck">예약됨</div>`;
+      el.className = 'pt-slot-row pt-slot-row--booked';
+      el.innerHTML = `${timeHtml}<div class="postit postit--row stuck">예약됨<small>눌러서 취소</small></div>`;
       el.addEventListener('click', () => handlers.onFilledClick?.(slot, el));
     } else if (open) {
-      el.classList.add('cb-slot--open');
-      el.innerHTML = `<span class="cb-time">${slot.start_time.slice(0, 5)}</span>${methodTagsHtml(slot.mode)}<div class="postit"></div>`;
+      el.className = 'pt-slot-row pt-slot-row--open';
+      el.innerHTML = `${timeHtml}${methodTagsHtml(slot.mode)}<span class="pt-slot-cta">신청하기 ›</span>`;
       el.addEventListener('click', () => handlers.onEmptyClick?.(slot, el));
     } else {
-      el.classList.add('cb-slot--closed');
-      el.innerHTML = `<span class="cb-time">${slot.start_time.slice(0, 5)}</span><div class="postit"></div>`;
+      el.className = 'pt-slot-row pt-slot-row--closed';
+      el.innerHTML = `${timeHtml}<span class="pt-slot-status">마감</span>`;
     }
 
     container.appendChild(el);

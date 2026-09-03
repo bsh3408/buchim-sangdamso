@@ -230,7 +230,7 @@ function renderParentTimetableBody() {
     renderParentSlotGrid(grid, group.slots, {
       onEmptyClick: (slot) => openBookingModal(slot, dateEntry),
       onFilledClick: (slot, slotEl) => openCancelModal(slot, dateEntry, slotEl),
-    });
+    }, dateEntry.duration_minutes);
   }
 }
 
@@ -452,6 +452,7 @@ let teacherState = {
   selectedDates: new Set(), // 달력에서 고른 날짜(저장 대상)
   periodPattern: null, // { preset, duration_minutes, slots:[...] } 교시 시간 틀(모든 날짜 공통)
   dateOpen: {}, // dateOpen[날짜][교시] = { is_open, mode } — 날짜마다 따로 열고 닫는다
+  justChangedKey: null, // 방금 열고/닫은 칸("날짜|시작시각") — 그 칸에만 확인 애니메이션을 준다
 };
 
 function startTeacher() {
@@ -602,9 +603,10 @@ async function loadTeacherSchedule() {
 function derivePatternFromDates() {
   const entries = [...teacherState.dates.values()];
   if (entries.length === 0) {
+    // 슬롯을 미리 만들어두지 않는다 — 선생님이 "시간표 만들기"를 직접 눌러야
+    // 요일별 시간표가 나타난다(그래야 점심시간 등 직접 고른 설정이 항상 반영된다).
     if (!teacherState.periodPattern) {
-      teacherState.periodPattern = {};
-      generateDefaultSlots(teacherState.periodPattern);
+      teacherState.periodPattern = { preset: null, duration_minutes: 20, slots: [] };
     }
     teacherState.dateOpen = {};
     return;
@@ -685,13 +687,6 @@ function renderAvailabilityEditor() {
   `;
   renderCalendar($('#rangeCalendar'), { onToggleDate: toggleDate, selectedDates: sortedDates });
   renderAvailabilityPatternEditor();
-}
-
-function generateDefaultSlots(pattern) {
-  const preset = pattern.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
-  pattern.preset = preset;
-  pattern.duration_minutes = pattern.duration_minutes || 20;
-  pattern.slots = buildPresetSlots({ preset, startTime: '09:00', periodCount: 6, consultMinutes: pattern.duration_minutes });
 }
 
 async function toggleDate(dateStr) {
@@ -832,6 +827,7 @@ function toggleDateOpen(date, startTime, baseSlot) {
   teacherState.dateOpen[date][startTime] = cur.is_open
     ? { is_open: false, mode: cur.mode }
     : { is_open: true, mode: cur.mode || 'both' };
+  teacherState.justChangedKey = `${date}|${startTime}`;
   renderPatternGrid();
 }
 
@@ -843,6 +839,7 @@ function toggleDateMethod(date, startTime, method, baseSlot) {
   const isOpen = modes.size > 0;
   const mode = modes.size === 2 ? 'both' : modes.size === 1 ? [...modes][0] : (cur.mode || 'both');
   teacherState.dateOpen[date][startTime] = { is_open: isOpen, mode };
+  teacherState.justChangedKey = `${date}|${startTime}`;
   renderPatternGrid();
 }
 
@@ -920,6 +917,7 @@ function renderPatternGrid() {
           const cls = ['wd-cell'];
           if (booked) cls.push('wd-cell--booked');
           else if (state.is_open) cls.push('wd-cell--open');
+          if (teacherState.justChangedKey === `${date}|${slot.start_time}`) cls.push('wd-cell--pulse');
           html += `<td class="${cls.join(' ')}" data-date="${date}" data-start="${slot.start_time}">`;
           html += `<div class="wd-cell-time">${slot.start_time.slice(0, 5)}</div>`;
           if (booked) {
@@ -938,6 +936,7 @@ function renderPatternGrid() {
     html += '</tbody></table></div>';
   });
   container.innerHTML = html;
+  teacherState.justChangedKey = null;
 
   $$('.wd-cell:not(.wd-cell--booked):not(.wd-cell--empty)', container).forEach(cell => {
     const date = cell.dataset.date;
@@ -1065,6 +1064,7 @@ async function saveAvailability() {
   const pattern = teacherState.periodPattern;
   const selected = [...teacherState.selectedDates];
   if (selected.length === 0) return toast('먼저 달력에서 날짜를 골라주세요');
+  if (pattern.slots.length === 0) return toast('먼저 시간표 만들기를 눌러주세요');
   try {
     for (const d of selected) {
       const slotsForDate = pattern.slots.map((slot) => {
