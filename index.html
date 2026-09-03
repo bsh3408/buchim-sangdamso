@@ -857,14 +857,19 @@ function toggleWeekdayMethod(weekday, key, method, baseSlots) {
   renderPatternGrid();
 }
 
-/** 달력에서 고른 날짜들을 요일별로 센다. 예: {1: 3, 3: 2} = 월요일 3개, 수요일 2개. */
-function countSelectedByWeekday() {
-  const counts = {};
-  for (const d of teacherState.selectedDates) {
+/** 달력에서 고른 날짜들을 요일별로 묶는다. 예: {1: ['2026-09-07','2026-09-14'], 3: [...]}. */
+function groupSelectedByWeekday() {
+  const byWeekday = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  for (const d of [...teacherState.selectedDates].sort()) {
     const wd = new Date(d + 'T00:00:00').getDay();
-    counts[wd] = (counts[wd] || 0) + 1;
+    if (byWeekday[wd]) byWeekday[wd].push(d);
   }
-  return counts;
+  return byWeekday;
+}
+
+function formatMonthDay(dateStr) {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${m}월 ${d}일`;
 }
 
 function renderPatternGrid() {
@@ -873,15 +878,15 @@ function renderPatternGrid() {
   const groups = groupByPeriod(pattern.slots);
   if (groups.length === 0) { container.innerHTML = '<p class="hint">먼저 위에서 시간표를 만들어주세요.</p>'; return; }
 
-  const weekdayCounts = countSelectedByWeekday();
-  const activeWeekdays = [1, 2, 3, 4, 5].filter(w => weekdayCounts[w]);
+  const weekdayDates = groupSelectedByWeekday();
+  const activeWeekdays = [1, 2, 3, 4, 5].filter(w => weekdayDates[w].length > 0);
   if (activeWeekdays.length === 0) {
     container.innerHTML = '<p class="hint">먼저 위 달력에서 날짜를 골라주세요. 고른 날짜의 요일만 여기 시간표에 나타나요.</p>';
     return;
   }
 
   let html = '<div class="wd-grid-wrap"><table class="wd-grid"><thead><tr><th></th>' +
-    activeWeekdays.map(w => `<th>${WEEKDAY_LABELS[w]}<br><span class="wd-col-count">${weekdayCounts[w]}일</span></th>`).join('') + '</tr></thead><tbody>';
+    activeWeekdays.map(w => `<th>${WEEKDAY_LABELS[w]}<br>${weekdayDates[w].map(d => `<span class="wd-col-date">${formatMonthDay(d)}</span>`).join('')}</th>`).join('') + '</tr></thead><tbody>';
 
   for (const group of groups) {
     const key = group.period ?? (group.period_label ?? 'custom');

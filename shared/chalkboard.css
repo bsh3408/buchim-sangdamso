@@ -223,7 +223,7 @@ textarea { resize:vertical; min-height:90px; }
 .wd-grid { width:100%; border-collapse:collapse; font-size:12px; background:#fff; }
 .wd-grid th, .wd-grid td { border:1px solid var(--border); padding:4px; text-align:center; }
 .wd-grid thead th { background:var(--disabled); color:var(--text-muted); font-weight:700; padding:8px 4px; }
-.wd-col-count { font-weight:400; color:var(--primary); font-size:10px; }
+.wd-col-date { display:block; font-weight:400; color:var(--primary); font-size:10px; white-space:nowrap; }
 .wd-row-head { background:var(--disabled); font-weight:700; white-space:nowrap; padding:6px 10px; }
 .wd-row-time { font-weight:400; color:var(--text-muted); font-size:10px; }
 .wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:#fff; transition:background .12s; }
