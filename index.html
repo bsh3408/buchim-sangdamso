@@ -447,8 +447,8 @@ let teacherState = {
   parentCode: null,
   dates: new Map(), // date -> 서버에서 불러온 실제 슬롯(예약 포함)
   selectedDates: new Set(), // 달력에서 고른 날짜(저장 대상)
-  periodPattern: null, // { preset, duration_minutes, slots:[...] } 교시 시간 틀(모든 요일 공통)
-  weekdayOpen: { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} }, // weekdayOpen[요일][교시] = { is_open, mode }
+  periodPattern: null, // { preset, duration_minutes, slots:[...] } 교시 시간 틀(모든 날짜 공통)
+  dateOpen: {}, // dateOpen[날짜][교시] = { is_open, mode } — 날짜마다 따로 열고 닫는다
 };
 
 function startTeacher() {
@@ -595,7 +595,7 @@ async function loadTeacherSchedule() {
   derivePatternFromDates();
 }
 
-/** 서버에 저장된 날짜들의 시간 구조·요일별 열림 상태를 편집용 틀(periodPattern/weekdayOpen)로 되살린다. */
+/** 서버에 저장된 날짜들의 시간 구조·날짜별 열림 상태를 편집용 틀(periodPattern/dateOpen)로 되살린다. */
 function derivePatternFromDates() {
   const entries = [...teacherState.dates.values()];
   if (entries.length === 0) {
@@ -603,13 +603,13 @@ function derivePatternFromDates() {
       teacherState.periodPattern = {};
       generateDefaultSlots(teacherState.periodPattern);
     }
-    teacherState.weekdayOpen = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} };
+    teacherState.dateOpen = {};
     return;
   }
 
   // periodPattern.slots는 순전히 "교시 시간 구조"만 나타낸다. 실제 열림·방법 상태는 전부
-  // weekdayOpen 쪽 명시적인 값으로만 판단하므로, 여기서는 항상 닫힘을 기본값으로 둔다
-  // (그렇지 않으면 기준으로 삼은 날짜의 요일 상태가 다른 모든 요일의 기본값으로 새어나간다).
+  // dateOpen 쪽 명시적인 값으로만 판단하므로, 여기서는 항상 닫힘을 기본값으로 둔다
+  // (그렇지 않으면 기준으로 삼은 날짜의 상태가 다른 모든 날짜의 기본값으로 새어나간다).
   const base = entries[0];
   teacherState.periodPattern = {
     preset: base.preset,
@@ -618,16 +618,15 @@ function derivePatternFromDates() {
       ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' })),
   };
 
-  const weekdayOpen = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {} };
+  const dateOpen = {};
   for (const entry of entries) {
-    const wd = new Date(entry.date + 'T00:00:00').getDay();
-    if (wd < 1 || wd > 5) continue;
+    dateOpen[entry.date] = {};
     for (const group of groupByPeriod(entry.slots)) {
       const key = group.period ?? (group.period_label ?? 'custom');
-      weekdayOpen[wd][key] = summarizeGroupState(group.slots);
+      dateOpen[entry.date][key] = summarizeGroupState(group.slots);
     }
   }
-  teacherState.weekdayOpen = weekdayOpen;
+  teacherState.dateOpen = dateOpen;
 }
 
 /** 한 교시(여러 상담 슬롯)의 열림·방법 상태를 하나로 요약한다. */
@@ -821,55 +820,63 @@ function renderAvailabilityPatternEditor() {
   renderPatternGrid();
 }
 
-/** 특정 요일·교시 칸에 실제 예약이 있는지 본다(요일별 시간표 칸 잠금용). */
-function isWeekdayPeriodBooked(weekday, periodKey) {
-  for (const [date, entry] of teacherState.dates) {
-    if (new Date(date + 'T00:00:00').getDay() !== weekday) continue;
-    for (const s of entry.slots) {
-      if ((s.period ?? s.period_label) === periodKey && s.booking) return true;
-    }
-  }
-  return false;
+/** 이 날짜·이 교시 칸에 실제 예약이 있는지 본다. */
+function isDatePeriodBooked(date, periodKey) {
+  const entry = teacherState.dates.get(date);
+  if (!entry) return false;
+  return entry.slots.some(s => (s.period ?? s.period_label) === periodKey && s.booking);
 }
 
-/** weekdayOpen에 저장된 값이 있으면 그걸, 없으면 patternPattern 자체의 기본 상태를 돌려준다. */
-function getEffectiveState(weekday, periodKey, baseSlots) {
-  const override = teacherState.weekdayOpen[weekday]?.[periodKey];
+/** dateOpen에 저장된 값이 있으면 그걸, 없으면 periodPattern 자체의 기본 상태를 돌려준다. */
+function getEffectiveDateState(date, periodKey, baseSlots) {
+  const override = teacherState.dateOpen[date]?.[periodKey];
   if (override) return override;
   return summarizeGroupState(baseSlots);
 }
 
-function toggleWeekdayOpen(weekday, key, baseSlots) {
-  const cur = getEffectiveState(weekday, key, baseSlots);
-  teacherState.weekdayOpen[weekday][key] = cur.is_open
+function toggleDateOpen(date, key, baseSlots) {
+  if (!teacherState.dateOpen[date]) teacherState.dateOpen[date] = {};
+  const cur = getEffectiveDateState(date, key, baseSlots);
+  teacherState.dateOpen[date][key] = cur.is_open
     ? { is_open: false, mode: cur.mode }
     : { is_open: true, mode: cur.mode || 'both' };
   renderPatternGrid();
 }
 
-function toggleWeekdayMethod(weekday, key, method, baseSlots) {
-  const cur = getEffectiveState(weekday, key, baseSlots);
+function toggleDateMethod(date, key, method, baseSlots) {
+  if (!teacherState.dateOpen[date]) teacherState.dateOpen[date] = {};
+  const cur = getEffectiveDateState(date, key, baseSlots);
   const modes = new Set(cur.mode === 'both' ? ['in_person', 'phone'] : cur.mode ? [cur.mode] : []);
   if (modes.has(method)) modes.delete(method); else modes.add(method);
   const isOpen = modes.size > 0;
   const mode = modes.size === 2 ? 'both' : modes.size === 1 ? [...modes][0] : (cur.mode || 'both');
-  teacherState.weekdayOpen[weekday][key] = { is_open: isOpen, mode };
+  teacherState.dateOpen[date][key] = { is_open: isOpen, mode };
   renderPatternGrid();
-}
-
-/** 달력에서 고른 날짜들을 요일별로 묶는다. 예: {1: ['2026-09-07','2026-09-14'], 3: [...]}. */
-function groupSelectedByWeekday() {
-  const byWeekday = { 1: [], 2: [], 3: [], 4: [], 5: [] };
-  for (const d of [...teacherState.selectedDates].sort()) {
-    const wd = new Date(d + 'T00:00:00').getDay();
-    if (byWeekday[wd]) byWeekday[wd].push(d);
-  }
-  return byWeekday;
 }
 
 function formatMonthDay(dateStr) {
   const [, m, d] = dateStr.split('-').map(Number);
   return `${m}월 ${d}일`;
+}
+
+/** 날짜가 속한 주의 월요일 날짜를 'YYYY-MM-DD'로 돌려준다(주 단위로 묶는 기준 키). */
+function weekKeyOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - (d.getDay() - 1));
+  return formatLocalDate(monday);
+}
+
+/** 달력에서 고른 날짜들을 주 단위로 묶는다. 예: { '2026-09-07': {1:'2026-09-07', 3:'2026-09-09'} }. */
+function groupSelectedByWeek() {
+  const weeks = new Map();
+  for (const d of teacherState.selectedDates) {
+    const wk = weekKeyOf(d);
+    const wd = new Date(d + 'T00:00:00').getDay();
+    if (!weeks.has(wk)) weeks.set(wk, {});
+    weeks.get(wk)[wd] = d;
+  }
+  return weeks;
 }
 
 function renderPatternGrid() {
@@ -878,48 +885,63 @@ function renderPatternGrid() {
   const groups = groupByPeriod(pattern.slots);
   if (groups.length === 0) { container.innerHTML = '<p class="hint">먼저 위에서 시간표를 만들어주세요.</p>'; return; }
 
-  const weekdayDates = groupSelectedByWeekday();
-  const activeWeekdays = [1, 2, 3, 4, 5].filter(w => weekdayDates[w].length > 0);
-  if (activeWeekdays.length === 0) {
-    container.innerHTML = '<p class="hint">먼저 위 달력에서 날짜를 골라주세요. 고른 날짜의 요일만 여기 시간표에 나타나요.</p>';
+  const weeks = groupSelectedByWeek();
+  if (weeks.size === 0) {
+    container.innerHTML = '<p class="hint">먼저 위 달력에서 날짜를 골라주세요. 고른 날짜가 있는 주만큼 시간표가 늘어나요.</p>';
     return;
   }
 
-  let html = '<div class="wd-grid-wrap"><table class="wd-grid"><thead><tr><th></th>' +
-    activeWeekdays.map(w => `<th>${WEEKDAY_LABELS[w]}<br>${weekdayDates[w].map(d => `<span class="wd-col-date">${formatMonthDay(d)}</span>`).join('')}</th>`).join('') + '</tr></thead><tbody>';
+  const sortedWeekKeys = [...weeks.keys()].sort();
+  let html = '';
+  sortedWeekKeys.forEach((wk, idx) => {
+    const days = weeks.get(wk);
+    const friday = new Date(wk + 'T00:00:00');
+    friday.setDate(friday.getDate() + 4);
+    const weekRange = `${formatMonthDay(wk)} ~ ${formatMonthDay(formatLocalDate(friday))}`;
 
-  for (const group of groups) {
-    const key = group.period ?? (group.period_label ?? 'custom');
-    const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
-    const start = group.slots[0].start_time.slice(0, 5);
-    const lastSlot = group.slots[group.slots.length - 1];
-    const end = addMinutes(lastSlot.start_time.slice(0, 5), pattern.duration_minutes || 20);
-    const range = group.period_range || `${start}~${end}`;
-    html += `<tr><th class="wd-row-head">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span></th>`;
-    for (const w of activeWeekdays) {
-      const booked = isWeekdayPeriodBooked(w, key);
-      const state = getEffectiveState(w, key, group.slots);
-      const cls = ['wd-cell'];
-      if (booked) cls.push('wd-cell--booked');
-      else if (state.is_open) cls.push('wd-cell--open');
-      html += `<td class="${cls.join(' ')}" data-weekday="${w}" data-key="${key}">`;
-      if (booked) {
-        html += `<span class="wd-cell-label">예약됨</span>`;
-      } else if (state.is_open) {
-        const modes = state.mode === 'both' ? ['in_person', 'phone'] : [state.mode];
-        html += modes.map(m => `<span class="wd-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}" data-m="${m}">${m === 'phone' ? '전화' : '방문'}</span>`).join('');
-      } else {
-        html += `<span class="wd-cell-label">닫힘</span>`;
+    html += `<h4 class="wd-week-title">${idx + 1}주차 (${weekRange})</h4>`;
+    html += '<div class="wd-grid-wrap"><table class="wd-grid"><thead><tr><th></th>' +
+      WEEKDAY_LABELS.slice(1).map((label, i) => {
+        const w = i + 1;
+        const date = days[w];
+        return `<th>${label}${date ? `<br><span class="wd-col-date">${formatMonthDay(date)}</span>` : ''}</th>`;
+      }).join('') + '</tr></thead><tbody>';
+
+    for (const group of groups) {
+      const key = group.period ?? (group.period_label ?? 'custom');
+      const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
+      const start = group.slots[0].start_time.slice(0, 5);
+      const lastSlot = group.slots[group.slots.length - 1];
+      const end = addMinutes(lastSlot.start_time.slice(0, 5), pattern.duration_minutes || 20);
+      const range = group.period_range || `${start}~${end}`;
+      html += `<tr><th class="wd-row-head">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span></th>`;
+      for (let w = 1; w <= 5; w++) {
+        const date = days[w];
+        if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+        const booked = isDatePeriodBooked(date, key);
+        const state = getEffectiveDateState(date, key, group.slots);
+        const cls = ['wd-cell'];
+        if (booked) cls.push('wd-cell--booked');
+        else if (state.is_open) cls.push('wd-cell--open');
+        html += `<td class="${cls.join(' ')}" data-date="${date}" data-key="${key}">`;
+        if (booked) {
+          html += `<span class="wd-cell-label">예약됨</span>`;
+        } else if (state.is_open) {
+          const modes = state.mode === 'both' ? ['in_person', 'phone'] : [state.mode];
+          html += modes.map(m => `<span class="wd-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}" data-m="${m}">${m === 'phone' ? '전화' : '방문'}</span>`).join('');
+        } else {
+          html += `<span class="wd-cell-label">닫힘</span>`;
+        }
+        html += `</td>`;
       }
-      html += `</td>`;
+      html += '</tr>';
     }
-    html += '</tr>';
-  }
-  html += '</tbody></table></div>';
+    html += '</tbody></table></div>';
+  });
   container.innerHTML = html;
 
-  $$('.wd-cell:not(.wd-cell--booked)', container).forEach(cell => {
-    const weekday = Number(cell.dataset.weekday);
+  $$('.wd-cell:not(.wd-cell--booked):not(.wd-cell--empty)', container).forEach(cell => {
+    const date = cell.dataset.date;
     const rawKey = cell.dataset.key;
     const key = /^\d+$/.test(rawKey) ? Number(rawKey) : rawKey;
     const group = groups.find(g => (g.period ?? (g.period_label ?? 'custom')) === key);
@@ -927,9 +949,9 @@ function renderPatternGrid() {
       const methodTag = e.target.closest('.wd-method-tag');
       if (methodTag) {
         e.stopPropagation();
-        toggleWeekdayMethod(weekday, key, methodTag.dataset.m, group.slots);
+        toggleDateMethod(date, key, methodTag.dataset.m, group.slots);
       } else {
-        toggleWeekdayOpen(weekday, key, group.slots);
+        toggleDateOpen(date, key, group.slots);
       }
     });
   });
@@ -942,10 +964,9 @@ async function saveAvailability() {
   const groups = groupByPeriod(pattern.slots);
   try {
     for (const d of selected) {
-      const weekday = new Date(d + 'T00:00:00').getDay();
       const slotsForDate = groups.flatMap(group => {
         const key = group.period ?? (group.period_label ?? 'custom');
-        const state = getEffectiveState(weekday, key, group.slots);
+        const state = getEffectiveDateState(d, key, group.slots);
         return group.slots.map(({ start_time, period, period_range, period_label }) => ({
           start_time, period, period_range, period_label,
           is_open: state.is_open, mode: state.mode,

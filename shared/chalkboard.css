@@ -219,7 +219,9 @@ textarea { resize:vertical; min-height:90px; }
 .cb-method-tag.m-phone { background:rgba(122,181,213,.18); border-color:#7ab5d5; color:#bfe0f0; }
 
 /* ---- 담임 설정: 요일 x 교시 진짜 시간표 형태 ---- */
-.wd-grid-wrap { overflow-x:auto; border-radius:10px; border:1px solid var(--border); }
+.wd-week-title { font-size:14px; margin:18px 0 8px; color:var(--text); }
+.wd-week-title:first-child { margin-top:0; }
+.wd-grid-wrap { overflow-x:auto; border-radius:10px; border:1px solid var(--border); margin-bottom:6px; }
 .wd-grid { width:100%; border-collapse:collapse; font-size:12px; background:#fff; }
 .wd-grid th, .wd-grid td { border:1px solid var(--border); padding:4px; text-align:center; }
 .wd-grid thead th { background:var(--disabled); color:var(--text-muted); font-weight:700; padding:8px 4px; }
@@ -230,6 +232,7 @@ textarea { resize:vertical; min-height:90px; }
 .wd-cell:hover { background:var(--primary-soft); }
 .wd-cell--open { background:var(--success-soft); }
 .wd-cell--booked { background:#fde3dc; cursor:not-allowed; }
+.wd-cell--empty { background:repeating-linear-gradient(135deg, var(--disabled), var(--disabled) 4px, #fff 4px, #fff 8px); cursor:default; }
 .wd-cell-label { font-size:11px; color:var(--text-muted); }
 .wd-cell--booked .wd-cell-label { color:var(--danger); font-weight:700; }
 .wd-method-tag {
