@@ -1,27 +1,27 @@
-/* 붙임상담소 — 디자인 시스템 (칠판 + 포스트잇) */
+/* 지금 만나러 갑니다 — 디자인 시스템 (해질녘의 다정함 + 포스트잇) */
 * { box-sizing: border-box; }
 :root {
-  --board: #233d2e;
-  --board-soft: #2c4a38;
-  --chalk: #e8e4d0;
-  --chalk-dim: #cfe0d3;
-  --cream: #fffdf7;
-  --bg: #f4f1e8;
-  --text: #233d2e;
-  --text-muted: #6b7d70;
-  --border: #ddd7c4;
-  --border-strong: #c7bfa4;
-  --disabled: #efece0;
+  --board: #3d2f42;
+  --board-soft: #4a3a4f;
+  --chalk: #f2e6ea;
+  --chalk-dim: #d8c0ca;
+  --cream: #fffbf8;
+  --bg: #f7f0ee;
+  --text: #3d2f3a;
+  --text-muted: #8a7580;
+  --border: #e8dcd6;
+  --border-strong: #d4c0ba;
+  --disabled: #f2e9e5;
   --postit: #ffe27a;
   --postit-text: #5a4a00;
-  --primary: #233d2e;
-  --primary-dark: #16281d;
-  --primary-soft: #e4ede6;
-  --success: #4fa27a;
-  --success-soft: #dcf0e4;
+  --primary: #8c5b6b;
+  --primary-dark: #6e4453;
+  --primary-soft: #f3e4e8;
+  --success: #5a9478;
+  --success-soft: #e0f0e6;
   --danger: #c1291e;
   --danger-soft: #f8d9d0;
-  --shadow: 0 1px 3px rgba(35,61,46,.08), 0 4px 14px rgba(35,61,46,.06);
+  --shadow: 0 1px 3px rgba(61,47,58,.08), 0 4px 14px rgba(61,47,58,.06);
 }
 html, body {
   font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -202,18 +202,18 @@ textarea { resize:vertical; min-height:90px; }
 .period-label span { font-size:12px; color:var(--chalk-dim); opacity:.8; }
 .cb-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px,1fr)); gap:14px; }
 .cb-slot {
-  position:relative; min-height:82px; border:2px dashed #6f8c78; border-radius:8px;
+  position:relative; min-height:82px; border:2px dashed #6b5560; border-radius:8px;
   display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--chalk-dim); font-size:13px;
   font-weight:500; cursor:pointer; user-select:none; text-align:center; padding:8px 6px; gap:5px;
 }
-.cb-slot:hover { border-color:#a8c4ae; }
+.cb-slot:hover { border-color:#a08a94; }
 .cb-slot.cb-slot--open { border-color:var(--success); }
 .cb-slot.cb-slot--closed { opacity:.35; cursor:not-allowed; border-style:solid; }
 .cb-slot .cb-time { opacity:.9; font-size:14px; }
 .cb-slot .cb-methods { display:flex; gap:5px; justify-content:center; flex-wrap:wrap; }
 .cb-method-tag {
   font-size:11px; padding:3px 8px; border-radius:20px; font-weight:600;
-  background:rgba(255,255,255,.1); color:var(--chalk); border:1px solid #6f8c78;
+  background:rgba(255,255,255,.1); color:var(--chalk); border:1px solid #6b5560;
 }
 .cb-method-tag.m-visit { background:rgba(240,182,110,.18); border-color:#e0b06e; color:#f0d6a8; }
 .cb-method-tag.m-phone { background:rgba(122,181,213,.18); border-color:#7ab5d5; color:#bfe0f0; }

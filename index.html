@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>붙임상담소</title>
+<title>지금 만나러 갑니다</title>
 <link rel="stylesheet" href="./shared/chalkboard.css" />
 </head>
 <body>
 <div id="app">
   <header>
-    <div class="logo" onclick="goHome()"><span>🧷</span>붙임상담소</div>
+    <div class="logo" onclick="goHome()"><span>💌</span>지금 만나러 갑니다</div>
     <div class="header-actions">
       <button class="back-btn" id="backBtn" onclick="goBack()" style="display:none;">&larr; 뒤로</button>
       <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">🎓 선생님이신가요</button>
@@ -106,8 +106,8 @@ function renderHome() {
   setView('home', () => {
     $('#main').innerHTML = `
       <div class="home-title">
-        <h1>🧷 붙임상담소</h1>
-        <p>칠판에 포스트잇 붙이듯, 학부모 상담을 예약해요</p>
+        <h1>💌 지금 만나러 갑니다</h1>
+        <p>선생님을 만나러 가는 시간, 포스트잇 한 장으로 정해요</p>
       </div>
       <div class="home-choices">
         <div class="home-choice" onclick="startParent()">
