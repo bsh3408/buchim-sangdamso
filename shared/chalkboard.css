@@ -218,6 +218,19 @@ textarea { resize:vertical; min-height:90px; }
 .cb-method-tag.m-visit { background:rgba(240,182,110,.18); border-color:#e0b06e; color:#f0d6a8; }
 .cb-method-tag.m-phone { background:rgba(122,181,213,.18); border-color:#7ab5d5; color:#bfe0f0; }
 
+/* ---- 담임 설정: 시간표 만들기 카드 ---- */
+.tt-generator {
+  background:var(--cream); border:1px solid var(--border); border-radius:12px; padding:16px; margin:16px 0;
+}
+.tt-generator .row { margin-bottom:10px; }
+.tt-generator .row .field { margin-bottom:0; }
+.tt-generator .field:last-of-type { margin-bottom:0; }
+.tt-lunch-toggle {
+  display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;
+  padding:12px 4px; border-top:1px dashed var(--border); margin-top:4px; font-weight:600; font-size:14px;
+}
+.tt-lunch-toggle input[type="checkbox"] { width:20px; height:20px; cursor:pointer; accent-color:var(--primary); }
+
 /* ---- 담임 설정: 요일 x 교시 진짜 시간표 형태 ---- */
 .wd-week-title { font-size:14px; margin:18px 0 8px; color:var(--text); }
 .wd-week-title:first-child { margin-top:0; }
@@ -226,9 +239,13 @@ textarea { resize:vertical; min-height:90px; }
 .wd-grid th, .wd-grid td { border:1px solid var(--border); padding:4px; text-align:center; }
 .wd-grid thead th { background:var(--disabled); color:var(--text-muted); font-weight:700; padding:8px 4px; }
 .wd-col-date { display:block; font-weight:400; color:var(--primary); font-size:10px; white-space:nowrap; }
-.wd-row-head { background:var(--disabled); font-weight:700; white-space:nowrap; padding:6px 10px; vertical-align:middle; }
-.wd-row-time { font-weight:400; color:var(--text-muted); font-size:10px; cursor:text; }
-.wd-row-time:hover { text-decoration:underline dotted; }
+.wd-row-head {
+  background:var(--disabled); font-weight:700; white-space:nowrap; padding:8px 10px; vertical-align:middle;
+  cursor:pointer; transition:background .12s;
+}
+.wd-row-head:hover { background:var(--primary-soft); }
+.wd-row-time { font-weight:400; color:var(--text-muted); font-size:10px; }
+.wd-edit-icon { display:block; font-size:11px; opacity:.6; margin-top:2px; }
 .wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:#fff; transition:background .12s; }
 .wd-cell:hover { background:var(--primary-soft); }
 .wd-cell--open { background:var(--success-soft); }
@@ -236,7 +253,6 @@ textarea { resize:vertical; min-height:90px; }
 .wd-cell--empty { background:repeating-linear-gradient(135deg, var(--disabled), var(--disabled) 4px, #fff 4px, #fff 8px); cursor:default; }
 .wd-cell-time { font-size:10px; color:var(--text-muted); margin-bottom:2px; cursor:text; }
 .wd-cell-time:hover { text-decoration:underline dotted; }
-.wd-time-input { width:64px; font-size:11px; padding:1px 2px; margin-bottom:2px; }
 .wd-cell-label { font-size:11px; color:var(--text-muted); }
 .wd-cell--booked .wd-cell-label { color:var(--danger); font-weight:700; }
 .wd-method-tag {
