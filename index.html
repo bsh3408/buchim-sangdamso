@@ -22,10 +22,9 @@
 <script type="module">
 import { db } from './shared/db.js';
 import { escapeHtml } from './shared/escape.js';
-import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots, rebuildPeriod } from './shared/timetable-presets.js';
+import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots } from './shared/timetable-presets.js';
 import { renderParentSlotGrid, peelPostit, groupByPeriod } from './shared/chalkboard.js';
 import { renderCalendar } from './shared/calendar.js';
-import { renderTimeline } from './shared/timeline.js';
 
 /*****************************************************
  * 공용 유틸
@@ -56,10 +55,6 @@ function toast(msg, ms) {
   setTimeout(() => t.remove(), ms || 2400);
 }
 function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
-function toMinutesLocal(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
 function addMinutes(hhmm, minutes) {
   const [h, m] = hhmm.split(':').map(Number);
   const total = h * 60 + m + minutes;
@@ -776,9 +771,7 @@ function renderAvailabilityPatternEditor() {
       <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
       <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
     </div>
-    <h3 style="margin-top:14px;">교시 시간 조정 (모든 요일 공통 — 칸을 끌어서 옮기거나, 오른쪽 끝을 끌어서 늘여보세요)</h3>
-    <div class="card" style="background:var(--bg);box-shadow:none;border:1px solid var(--border);padding:14px;margin-bottom:16px;" id="periodTimeline"></div>
-    <h3>요일별 시간표 (칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요)</h3>
+    <h3 style="margin-top:14px;">요일별 시간표 (칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요)</h3>
     <div id="weekdayGrid" style="margin-bottom:16px;"></div>
     <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">💾 고른 날짜에 저장</button>
   `;
@@ -804,7 +797,6 @@ function renderAvailabilityPatternEditor() {
     pattern.preset = preset;
     pattern.duration_minutes = consultMinutes;
     pattern.slots = slots;
-    renderPeriodTimeline();
     renderPatternGrid();
   });
   $('#afterschoolToggle').addEventListener('click', () => {
@@ -822,24 +814,11 @@ function renderAvailabilityPatternEditor() {
     if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
     pattern.slots.push(...toAdd);
     $('#afterschoolForm').style.display = 'none';
-    renderPeriodTimeline();
     renderPatternGrid();
   });
   $('#saveDateBtn').addEventListener('click', saveAvailability);
 
-  renderPeriodTimeline();
   renderPatternGrid();
-}
-
-/** 이 교시가 어느 요일에서든 예약이 있는지 본다. 시간(교시 자체)은 모든 요일이 공유하므로,
- * 시간 조정(타임라인)은 이 기준으로 막아야 한다. */
-function isPeriodBooked(periodKey) {
-  for (const entry of teacherState.dates.values()) {
-    for (const s of entry.slots) {
-      if ((s.period ?? s.period_label) === periodKey && s.booking) return true;
-    }
-  }
-  return false;
 }
 
 /** 특정 요일·교시 칸에 실제 예약이 있는지 본다(요일별 시간표 칸 잠금용). */
@@ -858,56 +837,6 @@ function getEffectiveState(weekday, periodKey, baseSlots) {
   const override = teacherState.weekdayOpen[weekday]?.[periodKey];
   if (override) return override;
   return summarizeGroupState(baseSlots);
-}
-
-function applyTimelineChange(key, { startMinutes, durationMinutes }) {
-  const pattern = teacherState.periodPattern;
-  if (typeof key === 'number') {
-    const freshSlots = rebuildPeriod(addMinutes('00:00', startMinutes), durationMinutes, pattern.duration_minutes || 20, key);
-    pattern.slots = pattern.slots.filter(s => s.period !== key).concat(freshSlots);
-  } else {
-    const labelValue = key === 'custom' ? undefined : key;
-    const consultMinutes = pattern.duration_minutes || 20;
-    const freshSlots = buildAfterschoolSlots({
-      startTime: addMinutes('00:00', startMinutes),
-      endTime: addMinutes('00:00', startMinutes + durationMinutes),
-      consultMinutes,
-    }).map(s => ({ ...s, period_label: labelValue }));
-    pattern.slots = pattern.slots.filter(s => (s.period_label ?? 'custom') !== key).concat(freshSlots);
-  }
-  renderPeriodTimeline();
-  renderPatternGrid();
-}
-
-function renderPeriodTimeline() {
-  const pattern = teacherState.periodPattern;
-  const timelineCard = $('#periodTimeline');
-  const groups = groupByPeriod(pattern.slots);
-  if (groups.length === 0) { timelineCard.innerHTML = ''; return; }
-
-  const items = groups.map(group => {
-    const key = group.period ?? (group.period_label ?? 'custom');
-    const startMinutes = toMinutesLocal(group.slots[0].start_time.slice(0, 5));
-    const lastSlot = group.slots[group.slots.length - 1];
-    const endMinutes = toMinutesLocal(lastSlot.start_time.slice(0, 5)) + (pattern.duration_minutes || 20);
-    return {
-      period: key,
-      startMinutes,
-      durationMinutes: Math.max(endMinutes - startMinutes, pattern.duration_minutes || 20),
-      locked: isPeriodBooked(key),
-      label: group.period_label || (group.period ? `${group.period}교시` : '직접 설정'),
-    };
-  });
-
-  const allStarts = items.map(p => p.startMinutes);
-  const allEnds = items.map(p => p.startMinutes + p.durationMinutes);
-  const dayStartMinutes = Math.max(0, Math.min(...allStarts) - 30);
-  const dayEndMinutes = Math.min(24 * 60, Math.max(...allEnds) + 30);
-
-  renderTimeline(timelineCard, items, {
-    dayStartMinutes, dayEndMinutes,
-    onChange: (key, change) => applyTimelineChange(key, change),
-  });
 }
 
 function toggleWeekdayOpen(weekday, key, baseSlots) {
@@ -941,7 +870,10 @@ function renderPatternGrid() {
     const key = group.period ?? (group.period_label ?? 'custom');
     const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
     const start = group.slots[0].start_time.slice(0, 5);
-    html += `<tr><th class="wd-row-head">${escapeHtml(headLabel)}<br><span class="wd-row-time">${start}</span></th>`;
+    const lastSlot = group.slots[group.slots.length - 1];
+    const end = addMinutes(lastSlot.start_time.slice(0, 5), pattern.duration_minutes || 20);
+    const range = group.period_range || `${start}~${end}`;
+    html += `<tr><th class="wd-row-head">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span></th>`;
     for (let w = 1; w <= 5; w++) {
       const booked = isWeekdayPeriodBooked(w, key);
       const state = getEffectiveState(w, key, group.slots);

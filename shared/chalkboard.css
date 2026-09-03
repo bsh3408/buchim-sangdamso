@@ -290,23 +290,3 @@ textarea { resize:vertical; min-height:90px; }
   background:var(--primary); color:#fff !important; font-weight:700;
 }
 .cal-hint { text-align:center; font-size:12px; color:var(--text-muted); margin-top:10px; }
-
-/* ---- 드래그로 시간 조정하는 타임라인 ---- */
-.tl-ruler {
-  position:relative; height:64px; background:var(--disabled);
-  border-radius:8px; margin-bottom:8px;
-}
-.tl-block {
-  position:absolute; top:6px; bottom:6px; background:var(--success-soft); border:1.5px solid var(--success);
-  border-radius:6px; padding:4px 8px; overflow:hidden; cursor:grab; touch-action:none;
-  display:flex; flex-direction:column; justify-content:center; min-width:36px;
-}
-.tl-block:active { cursor:grabbing; }
-.tl-block--locked { background:rgba(255,226,122,.25); border-color:var(--postit); cursor:not-allowed; }
-.tl-block-label { font-size:11px; font-weight:700; color:var(--primary-dark); white-space:nowrap; }
-.tl-block-time { font-size:10px; color:var(--text-muted); white-space:nowrap; }
-.tl-resize-handle {
-  position:absolute; right:0; top:0; bottom:0; width:8px; cursor:ew-resize; touch-action:none;
-  background:rgba(35,61,46,.15);
-}
-.tl-hint { font-size:11px; color:var(--text-muted); margin-bottom:14px; }
