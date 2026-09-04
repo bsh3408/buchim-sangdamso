@@ -901,7 +901,7 @@ function readFormIntoPattern() {
 
   pattern.startTime = $('#presetStart').value || '09:00';
   pattern.periodCount = Number($('#periodCount').value) || 6;
-  readLunchFormIntoPattern(pattern, '');
+  if (!pattern.lunch) pattern.lunch = defaultLunchState();
   regeneratePatternSlots();
 }
 
@@ -1082,8 +1082,8 @@ function renderAvailabilityPatternEditor() {
         <div class="field"><label>종료</label><input type="time" id="customEnd" value="16:00"></div>
       </div>
       <div class="field"><label>상담시간(분)</label><input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}"></div>
+      <p class="hint" style="margin:-4px 0 14px;">점심시간은 4교시 뒤 50분으로 자동으로 들어가요. 시간이나 요일별 설정은 다음 화면(요일별 시간표)에서 바꿀 수 있어요.</p>
 
-      ${lunchFormHtml(pattern, '')}
       ${AFTERSCHOOL_FORM_HTML}
 
       <button class="btn btn-primary btn-block" id="generateBtn">다음 · 요일별 시간표 만들기</button>
@@ -1095,11 +1095,9 @@ function renderAvailabilityPatternEditor() {
     const custom = $('#presetSelect').value === 'custom';
     $('#presetRange').style.display = custom ? 'flex' : 'none';
     $('#customRange').style.display = custom ? 'flex' : 'none';
-    $('#lunchSection').style.display = custom ? 'none' : 'block';
   };
   syncPresetVisibility();
   $('#presetSelect').addEventListener('change', syncPresetVisibility);
-  wireLunchFormToggles('');
   wireAfterschoolForm(null);
 
   $('#generateBtn').addEventListener('click', () => {
@@ -1122,14 +1120,21 @@ function renderWeekdayEditor() {
       <h2>요일별 시간표</h2>
       <p class="subtitle" style="margin-bottom:14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✎)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
 
+      <div class="row" style="margin-bottom:10px;">
+        ${isCustom ? '' : '<button type="button" class="btn btn-ghost" id="lunchSettingsToggle">점심시간 상세설정</button>'}
+        <button type="button" class="btn btn-ghost" id="afterschoolToggle">방과후 상담 추가</button>
+      </div>
       ${isCustom ? '' : `
-        <button type="button" class="btn btn-ghost btn-block" id="lunchSettingsToggle" style="margin-bottom:10px;">점심시간 설정</button>
         <div id="lunchSettingsForm" style="display:none;margin-bottom:16px;">
           ${lunchFormHtml(pattern, 'wd')}
           <button type="button" class="btn btn-secondary btn-block" id="wdLunchApply" style="margin-top:8px;">점심시간 반영하기</button>
         </div>
       `}
-      ${AFTERSCHOOL_FORM_HTML}
+      <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:16px;">
+        <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+        <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+        <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
+      </div>
 
       <div id="weekdayGrid" style="margin-bottom:16px;"></div>
       <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">고른 날짜에 저장</button>
