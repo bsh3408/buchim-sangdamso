@@ -3,19 +3,17 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>지금 만나러 갑니다</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap" rel="stylesheet" />
+<title>우리지금만나</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
 <link rel="stylesheet" href="./shared/chalkboard.css" />
 </head>
 <body>
 <div id="app">
   <header>
-    <div class="logo" onclick="goHome()"><span>📌</span>지금 만나러 갑니다</div>
+    <div class="logo" onclick="goHome()"><span>📌</span>우리지금만나</div>
     <div class="header-actions">
       <button class="back-btn" id="backBtn" onclick="goBack()" style="display:none;">&larr; 뒤로</button>
-      <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">🎓 선생님이신가요</button>
+      <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">선생님이신가요</button>
     </div>
   </header>
   <main id="main"></main>
@@ -149,12 +147,12 @@ function renderHome() {
   setView('home', () => {
     $('#main').innerHTML = `
       <div class="home-title">
-        <h1>📌 지금 만나러 갑니다</h1>
-        <p>선생님을 만나러 가는 시간, 포스트잇 한 장으로 정해요</p>
+        <span class="home-badge">상담예약도우미</span>
+        <h1>우리지금만나</h1>
+        <p>선생님과 만날 시간, 우리끼리 편하게 정해요</p>
       </div>
       <div class="home-choices">
         <div class="home-choice" onclick="startParent()">
-          <div class="icon">👨‍👩‍👧</div>
           <div class="txt">
             <strong>상담 예약하기</strong>
             <span>선생님이 알려주신 코드로 예약해요</span>
@@ -218,7 +216,7 @@ function renderParentTimetableView() {
         <h2>${gradeClassLabel(data.grade, data.teacher_class)} · ${escapeHtml(data.teacher_name)} 선생님</h2>
         <p class="subtitle">상담 신청 시간표예요</p>
 
-        ${data.dates.length === 0 ? '<div class="empty-state"><div class="big">📭</div><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
+        ${data.dates.length === 0 ? '<div class="empty-state"><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
           <h3>날짜</h3>
           <div class="date-scroll" id="pt-dateScroll"></div>
           <div class="legend">
@@ -284,7 +282,7 @@ function openBookingModal(slot, dateEntry) {
   const allowedModes = slot.mode === 'both' ? ['in_person', 'phone'] : [slot.mode];
 
   const methodChoices = allowedModes.map(m =>
-    `<div class="choice" data-method="${m}">${m === 'in_person' ? '🏫 방문' : '📞 전화'}</div>`
+    `<div class="choice" data-method="${m}">${m === 'in_person' ? '방문' : '전화'}</div>`
   ).join('');
   const purposeChoices = PURPOSES.map(p => `<div class="choice" data-purpose="${escapeHtml(p)}">${escapeHtml(p)}</div>`).join('');
 
@@ -317,7 +315,7 @@ function openBookingModal(slot, dateEntry) {
             <input type="tel" id="bk-pphone" placeholder="010-0000-0000">
           </div>
         </div>
-        <div class="hint" style="margin-bottom:14px;">🔐 취소할 때는 여기 입력한 학부모 연락처로 본인 확인을 해요. 꼭 정확히 입력해주세요.</div>
+        <div class="hint" style="margin-bottom:14px;">취소할 때는 여기 입력한 학부모 연락처로 본인 확인을 해요. 꼭 정확히 입력해주세요.</div>
         <div class="field">
           <label>상담 방법 <span class="req">*</span></label>
           <div class="choice-group" id="method-group">${methodChoices}</div>
@@ -407,7 +405,7 @@ function showBookingSuccess(slot, dateEntry, studentName, method) {
     const periodText = periodDisplay(slot);
     $('#main').innerHTML = `
       <div class="card" style="text-align:center;padding:36px 22px;">
-        <div style="font-size:56px;margin-bottom:14px;">✅</div>
+        <div class="success-badge"></div>
         <h1 style="font-size:20px;">예약이 완료되었어요!</h1>
         <p class="subtitle">선생님께 신청 내용이 전달됩니다</p>
         <div style="background:var(--primary-soft);padding:16px;border-radius:12px;text-align:left;margin:16px 0;">
@@ -417,7 +415,6 @@ function showBookingSuccess(slot, dateEntry, studentName, method) {
           <div><strong>상담 방법</strong> · ${MODE_LABEL[method]}</div>
         </div>
         <div class="info-box">
-          <span class="ico">🔐</span>
           <div>예약을 취소하려면, 시간표에서 본인이 예약한 포스트잇 칸을 다시 눌러 <strong>예약할 때 입력한 학부모 연락처</strong>를 입력하시면 됩니다.</div>
         </div>
         <button class="btn btn-primary btn-block" onclick="goHome()">홈으로 돌아가기</button>
@@ -446,7 +443,6 @@ function openCancelModal(slot, dateEntry, slotEl) {
           ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}
         </div>
         <div class="info-box danger">
-          <span class="ico">⚠️</span>
           <div>본인이 예약한 내용이 맞다면, 예약할 때 입력한 <strong>학부모 연락처</strong>를 입력하고 취소해주세요.</div>
         </div>
         <div class="field">
@@ -513,15 +509,13 @@ function startTeacher() {
   setView('teacher-choice', () => {
     $('#main').innerHTML = `
       <div class="home-title">
-        <h1 style="font-size:20px;">🎓 선생님이신가요?</h1>
+        <h1 style="font-size:20px;">선생님이신가요?</h1>
       </div>
       <div class="home-choices">
         <div class="home-choice" id="tc-login">
-          <div class="icon">🔑</div>
           <div class="txt"><strong>로그인</strong><span>이미 등록했어요</span></div>
         </div>
         <div class="home-choice" id="tc-register">
-          <div class="icon">🆕</div>
           <div class="txt"><strong>아이디 등록</strong><span>처음 사용해요</span></div>
         </div>
       </div>
@@ -535,7 +529,7 @@ function startTeacherLogin() {
   setView('teacher-login', () => {
     $('#main').innerHTML = `
       <div class="card">
-        <h2>🔑 로그인</h2>
+        <h2>로그인</h2>
         <p class="subtitle">등록할 때 입력한 이름과 코드를 입력해주세요.</p>
         <div class="field"><label>이름</label><input type="text" id="tl-name" placeholder="예: 김민준"></div>
         <div class="field"><label>코드</label><input type="password" id="tl-code" placeholder="등록할 때 정한 코드"></div>
@@ -575,9 +569,8 @@ function startTeacherRegister() {
   setView('teacher-register', () => {
     $('#main').innerHTML = `
       <div class="card">
-        <h2>🆕 아이디 등록</h2>
+        <h2>아이디 등록</h2>
         <div class="info-box">
-          <span class="ico">⚠️</span>
           <div>코드는 나중에 로그인할 때 필요해요. 꼭 기억해두세요!</div>
         </div>
         <div class="field"><label>이름</label><input type="text" id="tr-name" placeholder="예: 김민준"></div>
@@ -766,32 +759,33 @@ function renderTeacherDashboard() {
     const t = teacherState;
     $('#main').innerHTML = `
       <div class="card">
-        <h2>${escapeHtml(t.school)} ${gradeClassLabel(t.grade, t.teacherClass)} · ${escapeHtml(t.teacherName)} 선생님</h2>
-        <p class="subtitle">환영합니다 👋</p>
+        <div class="teacher-hello">
+          <div class="teacher-hello-avatar">${escapeHtml(t.teacherName.slice(0, 1))}</div>
+          <div>
+            <p class="teacher-hello-greet">${escapeHtml(t.teacherName)} 선생님, 환영합니다</p>
+            <h2 style="margin:0;">${escapeHtml(t.school)} ${gradeClassLabel(t.grade, t.teacherClass)}</h2>
+          </div>
+        </div>
         ${t.parentCode ? `
           <div class="info-box">
-            <span class="ico">🔗</span>
             <div style="width:100%;">
               학부모 공유 코드: <strong>${t.parentCode}</strong>
               <textarea id="shareMsgText" class="share-msg-box" readonly rows="6"></textarea>
-              <button type="button" class="btn btn-primary btn-block" id="copyShareMsgBtn" style="margin-top:8px;">📋 학부모께 보낼 메시지 복사하기</button>
+              <button type="button" class="btn btn-primary btn-block" id="copyShareMsgBtn" style="margin-top:8px;">학부모께 보낼 메시지 복사하기</button>
               <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}</span>
             </div>
           </div>
         ` : `
           <div class="info-box">
-            <span class="ico">ℹ️</span>
             <div>상담 가능 시간을 설정한 뒤 게시하면, 학부모에게 보낼 공유 코드가 만들어져요.</div>
           </div>
         `}
       </div>
       <div class="home-choices">
         <div class="home-choice" onclick="openAvailabilityEditor()">
-          <div class="icon">⏰</div>
           <div class="txt"><strong>상담 가능 시간 설정</strong><span>기간 만들기 · 시간대 · 상담 방법 설정</span></div>
         </div>
         <div class="home-choice" onclick="openBookingsList()">
-          <div class="icon">📅</div>
           <div class="txt"><strong>예약 현황</strong><span>학부모 예약 내용 확인 · 취소</span></div>
         </div>
       </div>
@@ -998,7 +992,7 @@ function renderAvailabilityPatternEditor() {
       <div id="lunchSection">
         <label class="tt-lunch-toggle" for="lunchEnable">
           <input type="checkbox" id="lunchEnable" ${masterEnabled ? 'checked' : ''}>
-          <span>🍱 점심시간 넣기</span>
+          <span>점심시간 넣기</span>
         </label>
         <div id="lunchBody" style="display:${masterEnabled ? 'block' : 'none'};">
           <label class="tt-lunch-perday-toggle" for="lunchPerWeekday">
@@ -1014,19 +1008,19 @@ function renderAvailabilityPatternEditor() {
         </div>
       </div>
 
-      <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin:8px 0;">➕ 방과후 상담 추가</button>
+      <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
       <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:10px;">
         <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
         <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
         <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
       </div>
 
-      <button class="btn btn-primary btn-block" id="generateBtn">📐 시간표 만들기</button>
+      <button class="btn btn-primary btn-block" id="generateBtn">시간표 만들기</button>
     </div>
     <h3 style="margin-top:14px;">요일별 시간표</h3>
-    <p class="hint" style="margin:-8px 0 14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✏️)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
+    <p class="hint" style="margin:-8px 0 14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✎)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
     <div id="weekdayGrid" style="margin-bottom:16px;"></div>
-    <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">💾 고른 날짜에 저장</button>
+    <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">고른 날짜에 저장</button>
   `;
 
   $('#presetSelect').value = pattern.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
@@ -1191,7 +1185,7 @@ function renderPatternGrid() {
       group.slots.forEach((refSlot, subIdx) => {
         html += '<tr>';
         if (subIdx === 0) {
-          html += `<th class="wd-row-head" rowspan="${group.slots.length}" data-period-key="${groupKey}">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span><span class="wd-edit-icon">✏️</span></th>`;
+          html += `<th class="wd-row-head" rowspan="${group.slots.length}" data-period-key="${groupKey}">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span><span class="wd-edit-icon">✎</span></th>`;
         }
         for (let w = 1; w <= 5; w++) {
           const date = days[w];
@@ -1225,20 +1219,20 @@ function renderPatternGrid() {
           const lc = pattern.lunch.shared;
           if (group.period === lc.afterPeriod) {
             html += `<tr class="wd-lunch-row" data-after-period="${group.period}">
-              <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
+              <td colspan="6"><div class="wd-lunch-cell">점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
             </tr>`;
           } else {
             html += `<tr class="wd-lunch-dropzone" data-after-period="${group.period}"><td colspan="6"><div class="wd-lunch-dropzone-bar"></div></td></tr>`;
           }
         } else {
           // 요일마다 다르므로 칸을 나눠, 그 요일의 점심이 여기 있으면 알약을, 아니면 놓을 자리를 보여준다.
-          html += `<tr class="wd-lunch-row-multi"><th class="wd-row-head wd-row-head--lunch">🍱<br><span class="wd-row-time">점심</span></th>`;
+          html += `<tr class="wd-lunch-row-multi"><th class="wd-row-head wd-row-head--lunch"><span class="wd-row-time">점심</span></th>`;
           for (let w = 1; w <= 5; w++) {
             const date = days[w];
             if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
             const lc = lunchFor(pattern, w);
             if (lc?.enabled && lc.afterPeriod === group.period) {
-              html += `<td class="wd-lunch-cell-td"><div class="wd-lunch-cell wd-lunch-cell--mini" data-dow="${w}" data-after-period="${group.period}">🍱 ${lc.minutes}분<span class="wd-lunch-handle">⠿</span></div></td>`;
+              html += `<td class="wd-lunch-cell-td"><div class="wd-lunch-cell wd-lunch-cell--mini" data-dow="${w}" data-after-period="${group.period}">${lc.minutes}분<span class="wd-lunch-handle">⠿</span></div></td>`;
             } else if (lc?.enabled) {
               html += `<td class="wd-lunch-dropzone-td" data-dow="${w}" data-after-period="${group.period}"><div class="wd-lunch-dropzone-bar"></div></td>`;
             } else {
@@ -1512,23 +1506,26 @@ function renderBookingsList() {
       <div class="booking-item-head">
         <div>
           <div class="booking-item-title">${escapeHtml(b.student_number)}번 ${escapeHtml(b.student_name)}</div>
-          <div class="booking-item-time">📅 ${b.date} · ${b.start_time}</div>
+          <div class="booking-item-time">${b.date} · ${b.start_time}</div>
         </div>
         <button class="btn btn-danger" style="padding:6px 10px;font-size:12px;" data-slot="${b.slot_id}" data-name="${escapeHtml(b.student_name)}">취소</button>
       </div>
       <div class="booking-item-meta"><strong>학부모</strong> ${escapeHtml(b.parent_name)} · ${escapeHtml(b.parent_phone)}</div>
-      <div>${b.mode === 'phone' ? '<span class="tag method-phone">📞 전화</span>' : '<span class="tag method-visit">🏫 방문</span>'}${(b.topics || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
+      <div>${b.mode === 'phone' ? '<span class="tag method-phone">전화</span>' : '<span class="tag method-visit">방문</span>'}${(b.topics || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
       ${b.notes ? `<div style="background:var(--disabled);padding:10px;border-radius:8px;font-size:13px;margin-top:6px;white-space:pre-wrap;">${escapeHtml(b.notes)}</div>` : ''}
     </div>
   `;
 
   $('#main').innerHTML = `
+    <div class="stat-row">
+      <div class="stat-card stat-coral"><div class="num">${upcoming.length}</div><div class="label">다가오는 예약</div></div>
+      <div class="stat-card stat-mint"><div class="num">${bookings.length}</div><div class="label">전체 예약</div></div>
+    </div>
     <div class="card">
-      <h2>📅 예약 현황</h2>
-      <p class="subtitle">총 ${bookings.length}건 (다가오는 예약 ${upcoming.length}건)</p>
-      <h3 style="margin-top:10px;">🔵 다가오는 예약</h3>
+      <h2>예약 현황</h2>
+      <h3 style="margin-top:10px;">다가오는 예약</h3>
       ${upcoming.length === 0 ? '<div class="empty-state" style="padding:24px;"><p>예약된 상담이 없습니다</p></div>' : upcoming.map(renderOne).join('')}
-      ${past.length > 0 ? `<h3 style="margin-top:22px;color:var(--text-muted);">📁 지난 예약 (${past.length})</h3>${past.map(renderOne).join('')}` : ''}
+      ${past.length > 0 ? `<h3 style="margin-top:22px;color:var(--text-muted);">지난 예약 (${past.length})</h3>${past.map(renderOne).join('')}` : ''}
     </div>
   `;
   $$('#main button[data-slot]').forEach(btn => {
