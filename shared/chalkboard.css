@@ -45,6 +45,11 @@ html, body {
   line-height: 1.5;
   margin: 0;
 }
+html { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--coral); }
 .cb-time, .wd-cell-time, .wd-row-time, .booking-item-time, .cal-day button, .wd-col-date {
   font-variant-numeric: tabular-nums;
 }

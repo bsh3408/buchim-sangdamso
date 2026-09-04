@@ -1082,9 +1082,7 @@ function renderAvailabilityPatternEditor() {
         <div class="field"><label>종료</label><input type="time" id="customEnd" value="16:00"></div>
       </div>
       <div class="field"><label>상담시간(분)</label><input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}"></div>
-      <p class="hint" style="margin:-4px 0 14px;">점심시간은 4교시 뒤 50분으로 자동으로 들어가요. 시간이나 요일별 설정은 다음 화면(요일별 시간표)에서 바꿀 수 있어요.</p>
-
-      ${AFTERSCHOOL_FORM_HTML}
+      <p class="hint" style="margin:-4px 0 14px;">점심시간은 4교시 뒤 50분으로 자동으로 들어가요. 방과후 상담이나 시간·요일별 설정은 다음 화면(요일별 시간표)에서 바꿀 수 있어요.</p>
 
       <button class="btn btn-primary btn-block" id="generateBtn">다음 · 요일별 시간표 만들기</button>
     </div>
@@ -1098,7 +1096,6 @@ function renderAvailabilityPatternEditor() {
   };
   syncPresetVisibility();
   $('#presetSelect').addEventListener('change', syncPresetVisibility);
-  wireAfterschoolForm(null);
 
   $('#generateBtn').addEventListener('click', () => {
     if (teacherState.selectedDates.size === 0) return toast('먼저 달력에서 날짜를 골라주세요');
