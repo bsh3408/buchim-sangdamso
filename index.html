@@ -25,7 +25,7 @@ import { db } from './shared/db.js';
 import { escapeHtml } from './shared/escape.js';
 import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots } from './shared/timetable-presets.js';
 import { renderParentSlotGrid, peelPostit, groupByPeriod } from './shared/chalkboard.js';
-import { renderCalendar } from './shared/calendar.js';
+import { renderCalendar, renderParentCalendar } from './shared/calendar.js';
 
 /*****************************************************
  * 공용 유틸
@@ -136,8 +136,16 @@ function goBack() {
 }
 function goHome() {
   viewStack = [];
+  currentView = null;
   parentState = { parentCode: null, pageData: null, selectedDate: null };
   renderHome();
+  playViewIn('back');
+  window.scrollTo(0, 0);
+}
+function goTeacherDashboard() {
+  viewStack = [];
+  currentView = null;
+  renderTeacherDashboard();
   playViewIn('back');
   window.scrollTo(0, 0);
 }
@@ -219,8 +227,7 @@ function renderParentTimetableView() {
         <p class="subtitle">상담 신청 시간표예요</p>
 
         ${data.dates.length === 0 ? '<div class="empty-state"><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
-          <h3>날짜</h3>
-          <div class="date-scroll" id="pt-dateScroll"></div>
+          <div id="pt-calendar" style="margin-bottom:16px;"></div>
           <div class="legend">
             <div class="legend-item"><div class="legend-box available"></div>예약 가능</div>
             <div class="legend-item"><div class="legend-box booked"></div>예약됨 (눌러서 취소)</div>
@@ -230,39 +237,34 @@ function renderParentTimetableView() {
       </div>
     `;
     if (data.dates.length > 0) {
-      renderParentDateScroll();
+      renderParentCalendarWidget();
       renderParentTimetableBody();
     }
   });
 }
 
-function renderParentDateScroll() {
-  const scroll = $('#pt-dateScroll');
-  scroll.innerHTML = parentState.pageData.dates.map(d => `
-    <div class="date-chip ${d.date === parentState.selectedDate ? 'selected' : ''}" data-date="${d.date}">
-      <div class="dow">${d.date.slice(5)} (${dowLabel(d.date)})</div>
-      <div class="dd">${Number(d.date.slice(8, 10))}</div>
-    </div>
-  `).join('');
-  $$('.date-chip', scroll).forEach(chip => {
-    chip.addEventListener('click', () => {
-      parentState.selectedDate = chip.dataset.date;
-      renderParentDateScroll();
+function renderParentCalendarWidget() {
+  renderParentCalendar($('#pt-calendar'), {
+    availableDates: parentState.pageData.dates.map(d => d.date),
+    selectedDate: parentState.selectedDate,
+    onSelectDate: (date) => {
+      parentState.selectedDate = date;
+      renderParentCalendarWidget();
       renderParentTimetableBody();
-    });
+    },
   });
 }
 
 function renderParentTimetableBody() {
   const area = $('#pt-timetable');
   const dateEntry = parentState.pageData.dates.find(d => d.date === parentState.selectedDate);
-  area.innerHTML = `<div class="cb-title" style="color:var(--chalk);opacity:.85;font-size:13px;margin-bottom:14px;">${dateEntry.date}</div>`;
+  area.innerHTML = `<div class="cb-title" style="opacity:.7;font-size:13px;margin-bottom:14px;">${dateEntry.date} (${dowLabel(dateEntry.date)})</div>`;
   for (const group of groupByPeriod(dateEntry.slots)) {
     const block = el(`<div class="period-group"></div>`);
     if (group.period_label) {
-      block.innerHTML = `<div class="period-label"><strong style="color:var(--chalk);">${escapeHtml(group.period_label)}</strong></div>`;
+      block.innerHTML = `<div class="period-label"><strong>${escapeHtml(group.period_label)}</strong></div>`;
     } else if (group.period) {
-      block.innerHTML = `<div class="period-label"><strong style="color:var(--chalk);">${group.period}교시</strong><span style="color:var(--chalk-dim);">${group.period_range}</span></div>`;
+      block.innerHTML = `<div class="period-label"><strong>${group.period}교시</strong><span>${group.period_range}</span></div>`;
     }
     const grid = document.createElement('div');
     block.appendChild(grid);
@@ -875,7 +877,9 @@ async function toggleDate(dateStr) {
 
 /** 폼에 입력된 값대로 요일별 교시 시간 구조(periodSlotsByDow)를 다시 만든다. 점심시간을
  * 드래그로 옮길 때도 해당 요일의 "몇 교시 뒤" 값만 바꾼 뒤 이 함수를 다시 불러 재사용한다. */
-function runGenerate() {
+/** 1단계 폼(기본 형태)의 현재 값을 읽어 pattern에 반영하고, 요일별 슬롯을 처음부터 만든다.
+ * "시간표 만들기"를 눌러 2단계(요일별 시간표)로 넘어갈 때만 호출한다. */
+function readFormIntoPattern() {
   const pattern = teacherState.periodPattern;
   const preset = $('#presetSelect').value;
   const consultMinutes = Number($('#consultMinutes').value) || 20;
@@ -886,12 +890,11 @@ function runGenerate() {
     pattern.periodSlotsByDow = Object.fromEntries(DOW_KEYS.map(d => [d, []]));
     pattern.extraSlots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
     pattern.lunch = null;
-    renderPatternGrid();
     return;
   }
 
-  const startTime = $('#presetStart').value || '09:00';
-  const periodCount = Number($('#periodCount').value) || 6;
+  pattern.startTime = $('#presetStart').value || '09:00';
+  pattern.periodCount = Number($('#periodCount').value) || 6;
   const lunchOn = $('#lunchEnable').checked;
   const perWeekday = lunchOn && Boolean($('#lunchPerWeekday')?.checked);
 
@@ -913,16 +916,25 @@ function runGenerate() {
     }
   }
 
+  regeneratePatternSlots();
+}
+
+/** pattern에 이미 저장된 값(preset·시작시각·교시수·점심 위치)만으로 요일별 슬롯을 다시 만든다.
+ * 2단계(요일별 시간표) 화면에서 점심시간을 드래그로 옮길 때처럼, 폼 없이 다시 계산할 때 쓴다. */
+function regeneratePatternSlots() {
+  const pattern = teacherState.periodPattern;
+  if (pattern.preset === 'custom') return;
+  const startTime = pattern.startTime || '09:00';
+  const periodCount = pattern.periodCount || 6;
   pattern.periodSlotsByDow = {};
   for (const d of DOW_KEYS) {
     const lc = lunchFor(pattern, d);
     pattern.periodSlotsByDow[d] = buildPresetSlots({
-      preset, startTime, periodCount, consultMinutes,
+      preset: pattern.preset, startTime, periodCount, consultMinutes: pattern.duration_minutes,
       lunchAfterPeriod: lc?.enabled ? lc.afterPeriod : null,
       lunchMinutes: lc?.minutes || 50,
     });
   }
-  renderPatternGrid();
 }
 
 /** 점심시간 줄을 다른 교시 사이로 옮긴다(드래그 앤 드롭으로 놓았을 때 호출). dow가 없으면
@@ -943,7 +955,8 @@ function moveLunch(dow, newAfterPeriod) {
     const input = $('#lunchAfter');
     if (input) input.value = newAfterPeriod;
   }
-  runGenerate();
+  regeneratePatternSlots();
+  renderPatternGrid();
   toast(`점심시간을 ${newAfterPeriod}교시 뒤로 옮겼어요`);
 }
 
@@ -1006,23 +1019,11 @@ function renderAvailabilityPatternEditor() {
             <div class="field"><label>점심시간(분)</label><input type="number" id="lunchMinutes" min="10" max="120" value="${shared.minutes || 50}"></div>
           </div>
           <div class="tt-lunch-days" id="lunchPerDayForm" style="display:${perWeekday ? 'flex' : 'none'};">${dayRowsHtml}</div>
-          <p class="hint" style="margin:2px 0 4px;">시간표를 만든 뒤엔 점심시간 줄을 손으로 눌러 끌면 다른 교시 사이로 옮길 수 있어요.</p>
         </div>
       </div>
 
-      <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
-      <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:10px;">
-        <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
-        <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
-        <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
-      </div>
-
-      <button class="btn btn-primary btn-block" id="generateBtn">시간표 만들기</button>
+      <button class="btn btn-primary btn-block" id="generateBtn">다음 · 요일별 시간표 만들기</button>
     </div>
-    <h3 style="margin-top:14px;">요일별 시간표</h3>
-    <p class="hint" style="margin:-8px 0 14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✎)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
-    <div id="weekdayGrid" style="margin-bottom:16px;"></div>
-    <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">고른 날짜에 저장</button>
   `;
 
   $('#presetSelect').value = pattern.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
@@ -1043,7 +1044,37 @@ function renderAvailabilityPatternEditor() {
     $('#lunchPerDayForm').style.display = per ? 'flex' : 'none';
   });
 
-  $('#generateBtn').addEventListener('click', runGenerate);
+  $('#generateBtn').addEventListener('click', () => {
+    if (teacherState.selectedDates.size === 0) return toast('먼저 달력에서 날짜를 골라주세요');
+    readFormIntoPattern();
+    openWeekdayEditor();
+  });
+}
+
+/** 2단계: 요일별 시간표를 커스텀하는 화면(칸 열기/닫기, 방과후 추가, 점심줄 드래그, 저장). */
+function openWeekdayEditor() {
+  setView('teacher-weekday', renderWeekdayEditor);
+}
+
+function renderWeekdayEditor() {
+  $('#main').innerHTML = `
+    <div class="card">
+      <h2>요일별 시간표</h2>
+      <p class="subtitle" style="margin-bottom:14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✎)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
+
+      <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin-bottom:10px;">방과후 상담 추가</button>
+      <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:16px;">
+        <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+        <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+        <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
+      </div>
+
+      <div id="weekdayGrid" style="margin-bottom:16px;"></div>
+      <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">고른 날짜에 저장</button>
+    </div>
+  `;
+
+  const pattern = teacherState.periodPattern;
   $('#afterschoolToggle').addEventListener('click', () => {
     const form = $('#afterschoolForm');
     form.style.display = form.style.display === 'none' ? 'flex' : 'none';
@@ -1465,7 +1496,7 @@ async function saveAvailability() {
       await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, pattern.preset, pattern.duration_minutes, slotsForDate);
     }
     await loadTeacherSchedule();
-    renderAvailabilityEditor();
+    goTeacherDashboard();
     toast(`${selected.length}개 날짜에 저장했어요`);
     await maybePublish();
   } catch (err) {

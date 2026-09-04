@@ -37,7 +37,7 @@ html, body {
   line-height: 1.5;
   margin: 0;
 }
-.cb-time, .wd-cell-time, .wd-row-time, .date-chip .dd, .booking-item-time, .cal-day button, .wd-col-date {
+.cb-time, .wd-cell-time, .wd-row-time, .booking-item-time, .cal-day button, .wd-col-date {
   font-variant-numeric: tabular-nums;
 }
 #app { max-width: 720px; margin: 0 auto; padding: 20px 16px 60px; }
@@ -132,20 +132,6 @@ textarea { resize:vertical; min-height:90px; }
 .home-choice .txt strong { display:block; font-size:17px; font-weight:800; margin-bottom:3px; }
 .home-choice .txt span { color:var(--text-muted); font-size:14px; }
 
-.date-scroll {
-  display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin:0 -16px 16px; padding-left:16px; padding-right:16px;
-}
-.date-scroll::-webkit-scrollbar { height:6px; }
-.date-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
-.date-chip {
-  flex-shrink:0; padding:10px 16px; border-radius:999px; border:1.5px solid var(--border); background:#fff;
-  cursor:pointer; text-align:center; min-width:72px; transition:all .15s;
-}
-.date-chip.selected { border-color:var(--coral); background:var(--coral); color:#fff; }
-.date-chip:active { transform:scale(.94); }
-.date-chip .dow { font-size:11px; opacity:.75; margin-bottom:2px; }
-.date-chip .dd { font-size:16px; font-weight:800; }
-
 .legend { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:var(--text-muted); }
 .legend-item { display:flex; align-items:center; gap:5px; }
 .legend-box { width:14px; height:14px; border-radius:5px; border:1.5px solid var(--border); }
@@ -163,15 +149,20 @@ textarea { resize:vertical; min-height:90px; }
 .choice:active:not(.disabled) { transform:scale(.95); }
 
 .modal-bg {
-  position:fixed; inset:0; background:rgba(36,31,22,.5); display:flex; align-items:flex-end; justify-content:center;
+  position:fixed; inset:0; background:rgba(14,11,7,.6); display:flex; align-items:flex-end; justify-content:center;
   z-index:100; animation:fadeIn .2s;
 }
 @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
 @keyframes slideUp { from{transform:translateY(20px);opacity:0;} to{transform:translateY(0);opacity:1;} }
 .modal {
   background:#fff; border-radius:28px 28px 0 0; padding:22px; width:100%; max-width:720px;
-  max-height:90vh; overflow-y:auto; animation:slideUp .25s; box-shadow:0 -10px 34px rgba(36,31,22,.16);
+  max-height:90vh; overflow-y:auto; animation:slideUp .25s; box-shadow:0 -4px 28px rgba(0,0,0,.22);
+  scrollbar-width:thin; scrollbar-color:var(--border-strong) transparent;
 }
+.modal::-webkit-scrollbar { width:8px; }
+.modal::-webkit-scrollbar-track { background:transparent; }
+.modal::-webkit-scrollbar-thumb { background:var(--border-strong); border-radius:999px; }
+.modal::-webkit-scrollbar-thumb:hover { background:var(--coral); }
 @media (min-width:720px) {
   .modal-bg { align-items:center; }
   .modal { border-radius:28px; max-height:85vh; }
@@ -462,4 +453,10 @@ textarea { resize:vertical; min-height:90px; }
 .cal-day button.cal-day--selected {
   background:var(--coral); color:#fff !important; font-weight:800;
 }
+.cal-day button.cal-day--avail { color:var(--text); font-weight:700; }
+.cal-day button.cal-day--avail::after {
+  content:""; position:absolute; bottom:4px; left:50%; transform:translateX(-50%);
+  width:4px; height:4px; border-radius:50%; background:var(--mint);
+}
+.cal-day button.cal-day--avail.cal-day--selected::after { background:#fff; }
 .cal-hint { text-align:center; font-size:12px; color:var(--text-muted); margin-top:10px; }
