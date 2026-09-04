@@ -158,7 +158,7 @@ function renderHome() {
     $('#main').innerHTML = `
       <div class="home-title">
         <span class="home-badge">상담예약도우미</span>
-        <h1>우리지금만나</h1>
+        <h1><img src="./images/highfive-icon.png" alt="" class="home-title-icon">우리지금만나</h1>
         <p>선생님과 만날 시간, 우리끼리 편하게 정해요</p>
       </div>
       <div class="home-choices">
@@ -1252,7 +1252,7 @@ function renderPatternGrid() {
           const lc = pattern.lunch.shared;
           if (group.period === lc.afterPeriod) {
             html += `<tr class="wd-lunch-row" data-after-period="${group.period}">
-              <td colspan="6"><div class="wd-lunch-cell">점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
+              <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
             </tr>`;
           } else {
             html += `<tr class="wd-lunch-dropzone" data-after-period="${group.period}"><td colspan="6"><div class="wd-lunch-dropzone-bar"></div></td></tr>`;
@@ -1551,8 +1551,8 @@ function renderBookingsList() {
 
   $('#main').innerHTML = `
     <div class="stat-row">
-      <div class="stat-card stat-coral"><div class="num">${upcoming.length}</div><div class="label">다가오는 예약</div></div>
-      <div class="stat-card stat-mint"><div class="num">${bookings.length}</div><div class="label">전체 예약</div></div>
+      <div class="stat-card stat-coral"><div class="stat-icon">⏰</div><div class="num">${upcoming.length}</div><div class="label">다가오는 예약</div></div>
+      <div class="stat-card stat-mint"><div class="stat-icon">📅</div><div class="num">${bookings.length}</div><div class="label">전체 예약</div></div>
     </div>
     <div class="card">
       <h2>예약 현황</h2>
