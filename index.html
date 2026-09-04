@@ -1057,6 +1057,7 @@ function renderPatternGrid() {
     const lc = lunchFor(pattern, d);
     if (lc?.enabled) lunchBoundaries.add(lc.afterPeriod);
   }
+  const lunchInUse = lunchBoundaries.size > 0; // 점심을 쓰고 있으면 다른 교시 사이에도 옮겨 놓을 자리를 보여준다
 
   const sortedWeekKeys = [...weeks.keys()].sort();
   let html = '';
@@ -1120,13 +1121,18 @@ function renderPatternGrid() {
         html += '</tr>';
       });
 
-      if (group.period && group.period < maxPeriod && lunchBoundaries.has(group.period)) {
+      if (group.period && group.period < maxPeriod && lunchInUse) {
         if (!perWeekday) {
-          // 공통 설정이므로 모든 요일이 같은 자리 — 기존처럼 통짜 바 하나로 보여준다.
+          // 공통 설정이므로 모든 요일이 같은 자리 — 현재 위치엔 통짜 바를, 다른 교시 사이엔
+          // 옮겨 놓을 수 있는 빈 자리를 보여준다.
           const lc = pattern.lunch.shared;
-          html += `<tr class="wd-lunch-row" data-after-period="${group.period}">
-            <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
-          </tr>`;
+          if (group.period === lc.afterPeriod) {
+            html += `<tr class="wd-lunch-row" data-after-period="${group.period}">
+              <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
+            </tr>`;
+          } else {
+            html += `<tr class="wd-lunch-dropzone" data-after-period="${group.period}"><td colspan="6"><div class="wd-lunch-dropzone-bar"></div></td></tr>`;
+          }
         } else {
           // 요일마다 다르므로 칸을 나눠, 그 요일의 점심이 여기 있으면 알약을, 아니면 놓을 자리를 보여준다.
           html += `<tr class="wd-lunch-row-multi"><th class="wd-row-head wd-row-head--lunch">🍱<br><span class="wd-row-time">점심</span></th>`;
@@ -1191,52 +1197,63 @@ function wireLunchDrag(container, perWeekday) {
     if (!lunchRow) return;
     const zones = $$('.wd-lunch-dropzone', container);
     const handle = $('.wd-lunch-cell', lunchRow);
-    wirePointerDrag(handle, lunchRow, zones, '.wd-lunch-dropzone', (zone) => moveLunch(null, Number(zone.dataset.afterPeriod)));
+    wirePointerDrag(handle, lunchRow, zones, (zone) => moveLunch(null, Number(zone.dataset.afterPeriod)));
     return;
   }
   $$('.wd-lunch-cell--mini', container).forEach((pill) => {
     const dow = pill.dataset.dow;
     const cell = pill.closest('td');
     const zones = $$(`.wd-lunch-dropzone-td[data-dow="${dow}"]`, container);
-    wirePointerDrag(pill, cell, zones, `.wd-lunch-dropzone-td[data-dow="${dow}"]`, (zone) => moveLunch(Number(dow), Number(zone.dataset.afterPeriod)));
+    wirePointerDrag(pill, cell, zones, (zone) => moveLunch(Number(dow), Number(zone.dataset.afterPeriod)));
   });
 }
 
-/** 공용 포인터 드래그: handle을 누른 채 끌면 zoneSelector에 맞는 자리가 지나갈 때마다
- * 밝아지고, 놓았을 때 그 자리 위였다면 onDrop(zone)을 부른다. */
-function wirePointerDrag(handle, moveEl, zones, zoneSelector, onDrop) {
+/** 공용 포인터 드래그: handle을 누른 채 위아래로 끌면, zones 중 세로 위치가 가장 가까운
+ * 자리가 밝아지고(정확히 그 얇은 칸 위에 있어야 하는 게 아니라 "가장 가까운 자리"를 찾으므로
+ * 빠르게 끌어도 잘 잡힌다), 놓았을 때 그 자리가 있었다면 onDrop(zone)을 부른다. 포인터
+ * 이벤트라 마우스·터치 모두에서 동작한다. */
+function wirePointerDrag(handle, moveEl, zones, onDrop) {
+  if (zones.length === 0) return;
+  const NEAR_PX = 60; // 이보다 멀면(다른 교시로 완전히 벗어났으면) 놓아도 무효
   handle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    handle.setPointerCapture(e.pointerId);
     moveEl.classList.add('wd-lunch-row--dragging');
     const startY = e.clientY;
+    const pointerId = e.pointerId;
     let activeZone = null;
 
-    moveEl.style.pointerEvents = 'none'; // 드래그 중엔 자기 자신 밑에 뭐가 있는지 봐야 하므로 히트테스트에서 빠진다
+    // setPointerCapture는 브라우저마다 손을 놓쳐서(캡처한 요소가 아니라 실제 커서 아래
+    // 요소로 이벤트가 새는 경우가 있다) 대신 document 전체에서 듣는다 — 이러면 커서가
+    // 무엇 위를 지나가든 항상 이 드래그가 이어진다.
     const onMove = (ev) => {
+      if (ev.pointerId !== pointerId) return;
       moveEl.style.transform = `translateY(${ev.clientY - startY}px)`;
-      const under = document.elementFromPoint(ev.clientX, ev.clientY);
-      const hit = under?.closest(zoneSelector);
-      const zone = hit && zones.includes(hit) ? hit : null;
+      let nearest = null, nearestDist = Infinity;
+      for (const z of zones) {
+        const r = z.getBoundingClientRect();
+        const dist = Math.abs(ev.clientY - (r.top + r.height / 2));
+        if (dist < nearestDist) { nearestDist = dist; nearest = z; }
+      }
+      const zone = nearestDist <= NEAR_PX ? nearest : null;
       if (zone !== activeZone) {
         activeZone?.classList.remove('wd-lunch-dropzone--active');
         activeZone = zone;
         activeZone?.classList.add('wd-lunch-dropzone--active');
       }
     };
-    const onUp = () => {
+    const onUp = (ev) => {
+      if (ev.pointerId !== pointerId) return;
       moveEl.classList.remove('wd-lunch-row--dragging');
       moveEl.style.transform = '';
-      moveEl.style.pointerEvents = '';
       zones.forEach(z => z.classList.remove('wd-lunch-dropzone--active'));
-      handle.removeEventListener('pointermove', onMove);
-      handle.removeEventListener('pointerup', onUp);
-      handle.removeEventListener('pointercancel', onUp);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
       if (activeZone) onDrop(activeZone);
     };
-    handle.addEventListener('pointermove', onMove);
-    handle.addEventListener('pointerup', onUp);
-    handle.addEventListener('pointercancel', onUp);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
   });
 }
 
