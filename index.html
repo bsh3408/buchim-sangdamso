@@ -1025,20 +1025,23 @@ function readLunchFormIntoPattern(pattern, idPrefix) {
 }
 
 const AFTERSCHOOL_FORM_HTML = `
-  <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
-  <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:10px;">
+  <button type="button" class="btn btn-tonal btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
+  <div id="afterschoolForm" class="row" style="display:none;margin-bottom:10px;">
     <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
     <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
-    <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
+    <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
   </div>
 `;
 
 /** AFTERSCHOOL_FORM_HTML로 그린 토글·추가 버튼을 연결한다. onAdded는 추가된 뒤 그리드를
- * 다시 그려야 하는 화면(2단계)에서만 넘긴다 — 1단계는 아직 그리드가 없어서 안 넘긴다. */
+ * 다시 그려야 하는 화면(2단계)에서만 넘긴다 — 1단계는 아직 그리드가 없어서 안 넘긴다. 열 때
+ * 점심시간 상세설정 패널이 펼쳐져 있으면 함께 닫아, 한 번에 하나만 열리게 한다. */
 function wireAfterschoolForm(onAdded) {
   $('#afterschoolToggle').addEventListener('click', () => {
     const form = $('#afterschoolForm');
-    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+    const opening = form.style.display === 'none';
+    form.style.display = opening ? 'flex' : 'none';
+    if (opening) { const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none'; }
   });
   $('#afterAdd').addEventListener('click', () => {
     const pattern = teacherState.periodPattern;
@@ -1118,8 +1121,8 @@ function renderWeekdayEditor() {
       <p class="subtitle" style="margin-bottom:14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✎)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
 
       <div class="row" style="margin-bottom:10px;">
-        ${isCustom ? '' : '<button type="button" class="btn btn-ghost" id="lunchSettingsToggle">점심시간 상세설정</button>'}
-        <button type="button" class="btn btn-ghost" id="afterschoolToggle">방과후 상담 추가</button>
+        ${isCustom ? '' : '<button type="button" class="btn btn-tonal-sun" id="lunchSettingsToggle">점심시간 상세설정</button>'}
+        <button type="button" class="btn btn-tonal" id="afterschoolToggle">방과후 상담 추가</button>
       </div>
       ${isCustom ? '' : `
         <div id="lunchSettingsForm" style="display:none;margin-bottom:16px;">
@@ -1127,10 +1130,10 @@ function renderWeekdayEditor() {
           <button type="button" class="btn btn-secondary btn-block" id="wdLunchApply" style="margin-top:8px;">점심시간 반영하기</button>
         </div>
       `}
-      <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:16px;">
+      <div id="afterschoolForm" class="row" style="display:none;margin-bottom:16px;">
         <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
         <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
-        <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
+        <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
       </div>
 
       <div id="weekdayGrid" style="margin-bottom:16px;"></div>
@@ -1141,7 +1144,9 @@ function renderWeekdayEditor() {
   if (!isCustom) {
     $('#lunchSettingsToggle').addEventListener('click', () => {
       const form = $('#lunchSettingsForm');
-      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      const opening = form.style.display === 'none';
+      form.style.display = opening ? 'block' : 'none';
+      if (opening) { const afterForm = $('#afterschoolForm'); if (afterForm) afterForm.style.display = 'none'; }
     });
     wireLunchFormToggles('wd');
     $('#wdLunchApply').addEventListener('click', () => {
