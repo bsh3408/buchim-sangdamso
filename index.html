@@ -59,6 +59,35 @@ function toast(msg, ms) {
   setTimeout(() => t.remove(), ms || 2400);
 }
 function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
+/** 되돌리기 어려운 동작(예약 신청·취소)은 버튼을 두 번 눌러야 실행되게 한다. 처음
+ * 누르면 문구가 "정말 ~할까요?"로 바뀌며 살짝 두근거리고, 그 상태에서 다시 누르면
+ * 실제로 fn()이 실행된다. 4초 안에 다시 안 누르면 원래 문구로 되돌아간다. */
+function armConfirm(btn, confirmLabel, fn) {
+  if (btn.dataset.armed === '1') {
+    delete btn.dataset.armed;
+    clearTimeout(Number(btn.dataset.armTimer));
+    btn.classList.remove('btn-confirm-armed');
+    fn();
+    return;
+  }
+  btn.dataset.armed = '1';
+  btn.dataset.originalLabel = btn.textContent;
+  btn.textContent = confirmLabel;
+  btn.classList.add('btn-confirm-armed');
+  const timer = setTimeout(() => {
+    if (btn.dataset.armed === '1') {
+      delete btn.dataset.armed;
+      btn.textContent = btn.dataset.originalLabel;
+      btn.classList.remove('btn-confirm-armed');
+    }
+  }, 4000);
+  btn.dataset.armTimer = String(timer);
+}
+// 등장 애니메이션이 끝나면 transform을 놓아준다 — 안 그러면 hover/active 때 쓰는
+// transform(살짝 뜨기, 눌림 등)이 애니메이션이 붙잡고 있는 값에 가려서 안 먹는다.
+document.addEventListener('animationend', (e) => {
+  if (['cardDrop', 'viewIn', 'emptyAppear'].includes(e.animationName)) e.target.style.animation = 'none';
+});
 function addMinutes(hhmm, minutes) {
   const [h, m] = hhmm.split(':').map(Number);
   const total = h * 60 + m + minutes;
@@ -83,11 +112,20 @@ function dowLabel(dateStr) {
 let viewStack = [];
 let currentView = null;
 
+/** 화면이 코르크보드에 새로 붙듯 살짝 떠오르는 전환 애니메이션을 다시 재생한다
+ * (클래스를 껐다 리플로우 후 다시 켜야 매번 새로 재생된다). */
+function playViewIn() {
+  const main = $('#main');
+  main.classList.remove('view-in');
+  void main.offsetWidth;
+  main.classList.add('view-in');
+}
 function setView(name, render, noPush) {
   if (!noPush && currentView) viewStack.push(currentView);
   currentView = { name, render };
   $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
   render();
+  playViewIn();
   window.scrollTo(0, 0);
 }
 function goBack() {
@@ -95,6 +133,7 @@ function goBack() {
   currentView = viewStack.pop();
   $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
   currentView.render();
+  playViewIn();
   window.scrollTo(0, 0);
 }
 function goHome() {
@@ -317,7 +356,7 @@ function openBookingModal(slot, dateEntry) {
   $('#bk-submit', bg).addEventListener('click', () => submitBooking(slot, dateEntry, bg));
 }
 
-async function submitBooking(slot, dateEntry, bg) {
+function submitBooking(slot, dateEntry, bg) {
   const num = $('#bk-num', bg).value.trim();
   const sname = $('#bk-sname', bg).value.trim();
   const pname = $('#bk-pname', bg).value.trim();
@@ -334,6 +373,12 @@ async function submitBooking(slot, dateEntry, bg) {
   if (!method) return toast('상담 방법을 선택해주세요');
   if (purposes.length === 0) return toast('상담 목적을 1개 이상 선택해주세요');
 
+  armConfirm($('#bk-submit', bg), '정말 신청할까요? 다시 누르면 확정돼요', () => {
+    doSubmitBooking(slot, dateEntry, bg, { num, sname, pname, pphone, method, purposes, content });
+  });
+}
+
+async function doSubmitBooking(slot, dateEntry, bg, data) {
   const btn = $('#bk-submit', bg);
   btn.disabled = true; btn.textContent = '예약 중...';
 
@@ -342,14 +387,15 @@ async function submitBooking(slot, dateEntry, bg) {
     const className = plainGradeClass(page.grade, page.teacher_class);
     const cancelToken = await db.bookSlot(
       parentState.parentCode, slot.slot_id,
-      num, sname, className, pname, pphone, purposes, content, method
+      data.num, data.sname, className, data.pname, data.pphone, data.purposes, data.content, data.method
     );
     slot.occupied = true;
-    slot.booking_ref = { student_number: num, cancel_token: cancelToken };
+    slot.booking_ref = { student_number: data.num, cancel_token: cancelToken };
     closeModal();
-    showBookingSuccess(slot, dateEntry, sname, method);
+    showBookingSuccess(slot, dateEntry, data.sname, data.method);
   } catch (err) {
     btn.disabled = false; btn.textContent = '예약 신청하기';
+    btn.classList.remove('btn-confirm-armed');
     if (err.message === 'ALREADY_BOOKED') toast('방금 다른 분이 신청했어요. 새로고침해서 다른 시간을 골라주세요.');
     else toast(err.message);
   }
@@ -423,9 +469,15 @@ function openCancelModal(slot, dateEntry, slotEl) {
   $('#cx-submit', bg).addEventListener('click', () => doCancelBooking(slot, slotEl, bg));
 }
 
-async function doCancelBooking(slot, slotEl, bg) {
+function doCancelBooking(slot, slotEl, bg) {
   const phone = $('#cx-phone', bg).value.trim();
   if (!phone) return toast('학부모 연락처를 입력해주세요');
+  armConfirm($('#cx-submit', bg), '정말 취소할까요? 다시 누르면 취소돼요', () => {
+    doConfirmCancelBooking(slot, slotEl, bg, phone);
+  });
+}
+
+async function doConfirmCancelBooking(slot, slotEl, bg, phone) {
   const btn = $('#cx-submit', bg);
   btn.disabled = true; btn.textContent = '처리 중...';
   try {
@@ -437,6 +489,7 @@ async function doCancelBooking(slot, slotEl, bg) {
     peelPostit(slotEl, () => renderParentTimetableBody());
   } catch (err) {
     btn.disabled = false; btn.textContent = '예약 취소하기';
+    btn.classList.remove('btn-confirm-armed');
     toast(err.message);
   }
 }
@@ -755,13 +808,14 @@ function renderTeacherDashboard() {
 /** 학부모께 그대로 붙여넣어 보낼 수 있는 안내 메시지(링크 포함)를 만든다. */
 function buildParentShareMessage(t) {
   const link = `${location.origin}${location.pathname}?code=${t.parentCode}`;
-  return `${t.school} ${plainGradeClass(t.grade, t.teacherClass)} ${t.teacherName} 선생님입니다 😊
+  return `안녕하세요, ${t.school} ${plainGradeClass(t.grade, t.teacherClass)} 담임 ${t.teacherName}입니다.
 
-학부모 상담 예약을 받고 있어요. 아래 링크에서 편하신 시간으로 신청해 주세요.
+학부모 상담 신청을 받고 있습니다. 아래 링크에서 편하신 시간을 선택하여 신청해 주시기 바랍니다.
 
 📌 ${link}
 
-* 신청·취소 모두 이 링크에서 가능해요.`;
+* 신청 및 취소 모두 위 링크에서 가능합니다.
+감사합니다.`;
 }
 
 /** 클립보드로 복사한다(구형 브라우저·비보안 컨텍스트에서는 textarea+execCommand로 대신한다). */
@@ -969,8 +1023,8 @@ function renderAvailabilityPatternEditor() {
 
       <button class="btn btn-primary btn-block" id="generateBtn">📐 시간표 만들기</button>
     </div>
-    <p class="hint" style="margin:10px 0 14px;">시간표를 만든 뒤 아래에서 교시를 누르면 세부 시간을 더 조정할 수 있어요.</p>
-    <h3 style="margin-top:14px;">요일별 시간표 (칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요)</h3>
+    <h3 style="margin-top:14px;">요일별 시간표</h3>
+    <p class="hint" style="margin:-8px 0 14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✏️)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
     <div id="weekdayGrid" style="margin-bottom:16px;"></div>
     <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">💾 고른 날짜에 저장</button>
   `;
@@ -1478,16 +1532,17 @@ function renderBookingsList() {
     </div>
   `;
   $$('#main button[data-slot]').forEach(btn => {
-    btn.addEventListener('click', () => teacherCancelBk(btn.dataset.slot, btn.dataset.name));
+    btn.addEventListener('click', () => {
+      armConfirm(btn, '정말 취소?', () => doTeacherCancelBk(btn.dataset.slot, btn.dataset.name));
+    });
   });
 }
 
-async function teacherCancelBk(slotId, studentName) {
-  if (!confirm(`${studentName} 학생의 예약을 취소하시겠습니까?`)) return;
+async function doTeacherCancelBk(slotId, studentName) {
   try {
     await db.teacherCancelBooking(teacherState.pageId, teacherState.adminCode, slotId);
     await loadTeacherSchedule();
-    toast('취소되었습니다');
+    toast(`${studentName} 학생의 예약을 취소했어요`);
     renderBookingsList();
   } catch (err) { toast(err.message); }
 }
