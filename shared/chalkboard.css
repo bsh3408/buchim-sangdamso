@@ -197,6 +197,13 @@ textarea { resize:vertical; min-height:90px; }
   font-size:14px; color:var(--primary-dark); word-break:break-all;
 }
 
+.share-msg-box {
+  display:block; width:100%; margin-top:8px; padding:12px 14px; border-radius:12px;
+  border:1.5px solid var(--border-strong); background:#fff; color:var(--text);
+  font-family:inherit; font-size:13.5px; line-height:1.6; resize:vertical; white-space:pre-wrap;
+}
+.share-msg-box:focus { outline:none; border-color:var(--primary); }
+
 .row { display:flex; gap:10px; }
 .row > * { flex:1; }
 

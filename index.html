@@ -718,8 +718,12 @@ function renderTeacherDashboard() {
         ${t.parentCode ? `
           <div class="info-box">
             <span class="ico">🔗</span>
-            <div>학부모 공유 코드: <strong>${t.parentCode}</strong><br>
-            <span class="code-display" style="display:inline-block;margin-top:6px;">${location.origin}${location.pathname}?code=${t.parentCode}</span></div>
+            <div style="width:100%;">
+              학부모 공유 코드: <strong>${t.parentCode}</strong>
+              <textarea id="shareMsgText" class="share-msg-box" readonly rows="6"></textarea>
+              <button type="button" class="btn btn-primary btn-block" id="copyShareMsgBtn" style="margin-top:8px;">📋 학부모께 보낼 메시지 복사하기</button>
+              <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}</span>
+            </div>
           </div>
         ` : `
           <div class="info-box">
@@ -739,7 +743,46 @@ function renderTeacherDashboard() {
         </div>
       </div>
     `;
+    if (t.parentCode) {
+      $('#shareMsgText').value = buildParentShareMessage(t);
+      $('#copyShareMsgBtn').addEventListener('click', () => {
+        copyToClipboard($('#shareMsgText').value, '메시지를 복사했어요! 학부모님께 붙여넣기 해주세요');
+      });
+    }
   });
+}
+
+/** 학부모께 그대로 붙여넣어 보낼 수 있는 안내 메시지(링크 포함)를 만든다. */
+function buildParentShareMessage(t) {
+  const link = `${location.origin}${location.pathname}?code=${t.parentCode}`;
+  return `${t.school} ${plainGradeClass(t.grade, t.teacherClass)} ${t.teacherName} 선생님입니다 😊
+
+학부모 상담 예약을 받고 있어요. 아래 링크에서 편하신 시간으로 신청해 주세요.
+
+📌 ${link}
+
+* 신청·취소 모두 이 링크에서 가능해요.`;
+}
+
+/** 클립보드로 복사한다(구형 브라우저·비보안 컨텍스트에서는 textarea+execCommand로 대신한다). */
+async function copyToClipboard(text, successMsg) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    toast(successMsg || '복사했어요');
+  } catch (err) {
+    toast('복사에 실패했어요. 직접 선택해서 복사해주세요.');
+  }
 }
 
 function openAvailabilityEditor() {
