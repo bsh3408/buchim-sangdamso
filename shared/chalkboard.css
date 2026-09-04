@@ -117,13 +117,15 @@ input[type="password"], textarea, select {
 input:focus, textarea:focus, select:focus { outline:none; border-color:var(--coral); }
 textarea { resize:vertical; min-height:90px; }
 
-.home-title { text-align:center; margin:32px 0 30px; }
+.home-title { text-align:center; margin:32px 0 26px; }
 .home-badge {
   display:inline-block; padding:6px 14px; border-radius:999px; background:var(--sun-soft); color:var(--sun-text);
   font-size:12.5px; font-weight:700; letter-spacing:.2px; margin-bottom:12px; font-family:"Pretendard","Noto Sans KR",sans-serif;
 }
-.home-title h1 { font-size:52px; margin-bottom:9px; font-family:var(--font-brand); font-weight:400; display:flex; align-items:center; justify-content:center; gap:10px; }
+.home-title h1 { font-size:52px; margin-bottom:9px; font-family:var(--font-brand); font-weight:400; display:flex; align-items:center; justify-content:center; gap:8px; }
 .home-title-icon { width:40px; height:40px; object-fit:contain; flex-shrink:0; }
+.home-title-spark { font-size:22px; color:var(--sun); transform:translateY(-14px); }
+.home-title-heart { font-size:26px; color:var(--coral); transform:translateY(-14px); }
 .home-title p { color:var(--text-muted); }
 .home-choices { display:grid; gap:14px; }
 @keyframes cardDrop { from{opacity:0; transform:translateY(22px) scale(.97);} to{opacity:1; transform:translateY(0) scale(1);} }
@@ -146,6 +148,16 @@ textarea { resize:vertical; min-height:90px; }
   background:rgba(255,255,255,.65); display:flex; align-items:center; justify-content:center;
   font-size:20px; font-weight:700; color:var(--ink); font-family:"Pretendard","Noto Sans KR",sans-serif;
 }
+.home-choice--illust {
+  padding:24px; align-items:center;
+}
+.home-choice--illust::after { content:none; }
+.home-choice--illust.home-choice:nth-child(1) { background:linear-gradient(135deg,#ffcdb8,#ffe3d8); }
+.home-choice--illust.home-choice:nth-child(2) { background:linear-gradient(135deg,#c8ecd9,#d8f2ea); }
+.home-choice--illust .txt strong { font-size:23px; margin-bottom:6px; }
+.home-choice-illust { width:96px; height:96px; object-fit:contain; flex-shrink:0; }
+.home-footer { text-align:center; color:var(--text-muted); font-size:13px; margin-top:22px; font-family:var(--font-brand); }
+.home-footer .home-title-heart { font-size:15px; transform:none; vertical-align:middle; }
 
 .legend { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:var(--text-muted); }
 .legend-item { display:flex; align-items:center; gap:5px; }
