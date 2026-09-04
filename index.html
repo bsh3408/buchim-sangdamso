@@ -112,18 +112,18 @@ let currentView = null;
 
 /** 화면이 코르크보드에 새로 붙듯 살짝 떠오르는 전환 애니메이션을 다시 재생한다
  * (클래스를 껐다 리플로우 후 다시 켜야 매번 새로 재생된다). */
-function playViewIn() {
+function playViewIn(direction) {
   const main = $('#main');
-  main.classList.remove('view-in');
+  main.classList.remove('view-in-fwd', 'view-in-back');
   void main.offsetWidth;
-  main.classList.add('view-in');
+  main.classList.add(direction === 'back' ? 'view-in-back' : 'view-in-fwd');
 }
 function setView(name, render, noPush) {
   if (!noPush && currentView) viewStack.push(currentView);
   currentView = { name, render };
   $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
   render();
-  playViewIn();
+  playViewIn('fwd');
   window.scrollTo(0, 0);
 }
 function goBack() {
@@ -131,13 +131,15 @@ function goBack() {
   currentView = viewStack.pop();
   $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
   currentView.render();
-  playViewIn();
+  playViewIn('back');
   window.scrollTo(0, 0);
 }
 function goHome() {
   viewStack = [];
   parentState = { parentCode: null, pageData: null, selectedDate: null };
   renderHome();
+  playViewIn('back');
+  window.scrollTo(0, 0);
 }
 
 /*****************************************************

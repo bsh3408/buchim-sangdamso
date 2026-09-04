@@ -42,11 +42,14 @@ html, body {
 }
 #app { max-width: 720px; margin: 0 auto; padding: 20px 16px 60px; }
 
-/* ---- 화면 전환 ---- */
-@keyframes viewIn { from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
-#main.view-in { animation: viewIn .28s cubic-bezier(.22,1,.36,1) both; }
+/* ---- 화면 전환: 더 들어갈 땐 오른쪽에서, 뒤로 나올 땐 왼쪽에서 밀려 들어온다 ---- */
+#main { overflow-x: hidden; }
+@keyframes viewInFwd { from{opacity:0; transform:translateX(36px);} to{opacity:1; transform:translateX(0);} }
+@keyframes viewInBack { from{opacity:0; transform:translateX(-36px);} to{opacity:1; transform:translateX(0);} }
+#main.view-in-fwd { animation: viewInFwd .3s cubic-bezier(.22,.9,.32,1) both; }
+#main.view-in-back { animation: viewInBack .3s cubic-bezier(.22,.9,.32,1) both; }
 @media (prefers-reduced-motion: reduce) {
-  #main.view-in, .home-choice, .empty-state, .btn-confirm-armed { animation: none !important; }
+  #main.view-in-fwd, #main.view-in-back, .home-choice, .empty-state, .btn-confirm-armed { animation: none !important; }
 }
 
 header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
