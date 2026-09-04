@@ -158,8 +158,8 @@ function renderHome() {
     $('#main').innerHTML = `
       <div class="home-title">
         <span class="home-badge">상담예약도우미</span>
-        <h1><span class="home-title-spark">✨</span><img src="./images/highfive-icon.png" alt="" class="home-title-icon">우리지금만나<span class="home-title-heart">♡</span></h1>
-        <p>선생님과 만날 시간, 우리끼리 편하게 정해요 🙂</p>
+        <h1><img src="./images/highfive-icon.png" alt="" class="home-title-icon">우리지금만나</h1>
+        <p>선생님과 만날 시간, 우리끼리 편하게 정해요</p>
       </div>
       <div class="home-choices">
         <div class="home-choice home-choice--illust" onclick="startParent()">
@@ -167,17 +167,14 @@ function renderHome() {
             <strong>상담 예약하기</strong>
             <span>선생님이 알려주신 코드로 예약해요</span>
           </div>
-          <img src="./images/illust-calendar.png" alt="" class="home-choice-illust">
         </div>
         <div class="home-choice home-choice--illust" onclick="startTeacher()">
           <div class="txt">
             <strong>선생님이신가요</strong>
             <span>로그인하고 상담 시간표를 관리해요</span>
           </div>
-          <img src="./images/illust-key.png" alt="" class="home-choice-illust">
         </div>
       </div>
-      <p class="home-footer">우리의 마음이 만나는 곳 <span class="home-title-heart">♡</span></p>
     `;
   }, true);
 }
