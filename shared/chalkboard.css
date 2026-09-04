@@ -1,4 +1,4 @@
-/* 우리지금만나 — 디자인 시스템 (선생님과 나누는 약속 카드) */
+/* 우리지금만나 — 디자인 시스템 (야간비행: 짙은 밤하늘 위 손글씨 타이틀) */
 @font-face {
   font-family: 'GeuriunXGukhanbakSingoyangI';
   src: url('https://cdn.jsdelivr.net/gh/Project-Noonnu/2607161334@x-6/x/GriunXHangeul_Gowoon-Rg.woff2') format('woff2');
@@ -7,38 +7,43 @@
 }
 * { box-sizing: border-box; }
 :root {
-  --bg: #fbf5ea;
-  --cream: #ffffff;
-  --text: #241f16;
-  --text-muted: #8c8271;
-  --border: #eee2cd;
-  --border-strong: #e2d1af;
-  --disabled: #f3ead9;
+  --bg: #0c0f18;
+  --cream: #171b28;
+  --surface-2: #1e2333;
+  --text: #f3f0e8;
+  --text-muted: #9498ab;
+  --border: #2d3346;
+  --border-strong: #3d4459;
+  --disabled: #232838;
   --coral: #ff6b4a;
-  --coral-dark: #e8532f;
-  --coral-soft: #ffe3d8;
-  --mint: #0ea587;
-  --mint-dark: #0c8a71;
-  --mint-soft: #d8f2ea;
+  --coral-dark: #ff8a6c;
+  --coral-soft: rgba(255,107,74,.16);
+  --mint: #2dd4bf;
+  --mint-dark: #5ee4d3;
+  --mint-soft: rgba(45,212,191,.16);
   --sun: #ffc93f;
-  --sun-soft: #fff2d2;
-  --sun-text: #7a5300;
-  --ink: #241f16;
+  --sun-soft: rgba(255,201,63,.16);
+  --sun-text: #ffc93f;
+  --ink: #f3f0e8;
   --primary: #ff6b4a;
-  --primary-dark: #e8532f;
-  --primary-soft: #ffe3d8;
-  --success: #0ea587;
-  --success-soft: #d8f2ea;
-  --danger: #e14b3d;
-  --danger-soft: #fbdcd7;
-  --shadow: 0 2px 10px rgba(60,40,20,.05), 0 14px 30px rgba(60,40,20,.08);
-  --shadow-soft: 0 10px 24px rgba(255,107,74,.18);
-  --font-display: "Pretendard", "Noto Sans KR", sans-serif;
+  --primary-dark: #ff8a6c;
+  --primary-soft: rgba(255,107,74,.16);
+  --success: #2dd4bf;
+  --success-soft: rgba(45,212,191,.16);
+  --danger: #ff6259;
+  --danger-soft: rgba(255,98,89,.16);
+  --shadow: 0 2px 10px rgba(0,0,0,.3), 0 14px 30px rgba(0,0,0,.35);
+  --shadow-soft: 0 10px 26px rgba(255,107,74,.22);
+  --font-display: "GeuriunXGukhanbakSingoyangI", "Pretendard", "Noto Sans KR", sans-serif;
   --font-brand: "GeuriunXGukhanbakSingoyangI", "Pretendard", "Noto Sans KR", sans-serif;
 }
 html, body {
-  font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-display);
   background: var(--bg);
+  background-image:
+    radial-gradient(ellipse 700px 420px at 50% -8%, rgba(255,201,63,.05), transparent 60%),
+    radial-gradient(ellipse 900px 600px at 85% 100%, rgba(255,107,74,.05), transparent 55%);
+  background-attachment: fixed;
   color: var(--text);
   font-size: 15px;
   line-height: 1.5;
@@ -60,8 +65,8 @@ html, body {
 }
 
 header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
-.logo { font-family:var(--font-brand); font-size:24px; font-weight:400; color:var(--ink); cursor:pointer; letter-spacing:-.2px; }
-.logo span { margin-right:6px; }
+.logo { display:inline-flex; align-items:center; gap:8px; font-family:var(--font-brand); font-size:24px; font-weight:400; color:var(--ink); cursor:pointer; letter-spacing:-.2px; }
+.logo-icon { width:22px; height:22px; object-fit:contain; opacity:.92; }
 .header-actions { display:flex; gap:6px; align-items:center; }
 .back-btn {
   display:inline-flex; align-items:center; gap:4px; color:var(--text-muted); font-size:14px;
@@ -70,73 +75,74 @@ header { display:flex; align-items:center; justify-content:space-between; margin
 .back-btn:hover { background:var(--coral-soft); color:var(--coral-dark); }
 .teacher-btn {
   display:inline-flex; align-items:center; gap:4px; padding:8px 14px; border-radius:999px;
-  background:var(--ink); border:none; color:#fff; font-size:13px; font-weight:700;
+  background:var(--text); border:none; color:var(--bg); font-size:13px; font-weight:700;
   cursor:pointer; font-family:inherit; transition:all .15s;
 }
-.teacher-btn:hover { background:#3a3427; transform:translateY(-1px); }
+.teacher-btn:hover { background:#fff; }
 
-.card { background:var(--cream); border-radius:26px; padding:22px; box-shadow:var(--shadow); margin-bottom:16px; }
-h1 { font-family:var(--font-display); font-size:25px; font-weight:800; margin:0 0 6px; letter-spacing:-.3px; }
-h2 { font-family:var(--font-display); font-size:19px; font-weight:800; margin:0 0 14px; }
-h3 { font-size:15px; font-weight:700; margin:0 0 8px; color:var(--text); }
+.card { background:var(--cream); border-radius:26px; padding:22px; box-shadow:var(--shadow); margin-bottom:16px; border:1px solid var(--border); }
+h1 { font-family:var(--font-display); font-size:25px; font-weight:400; margin:0 0 6px; letter-spacing:-.3px; }
+h2 { font-family:var(--font-display); font-size:21px; font-weight:400; margin:0 0 14px; }
+h3 { font-size:16px; font-weight:400; margin:0 0 8px; color:var(--text); }
 .subtitle { color:var(--text-muted); font-size:14px; margin:0 0 22px; }
 .hint { color:var(--text-muted); font-size:13px; margin-top:6px; }
 
 .btn {
   display:inline-flex; align-items:center; justify-content:center; padding:13px 20px;
-  border-radius:999px; border:none; font-size:15px; font-weight:700; cursor:pointer;
-  transition:all .18s; font-family:inherit;
+  border-radius:999px; border:none; font-size:16px; font-weight:400; cursor:pointer;
+  transition:all .18s; font-family:var(--font-brand);
 }
 .btn:disabled { opacity:.5; cursor:not-allowed; }
 .btn:active:not(:disabled) { transform:scale(.96); }
 .btn-primary { background:var(--coral); color:#fff; box-shadow:0 6px 16px rgba(255,107,74,.32); }
 .btn-primary:hover:not(:disabled) { background:var(--coral-dark); transform:translateY(-1px); box-shadow:0 8px 20px rgba(255,107,74,.38); }
 .btn-secondary { background:var(--coral-soft); color:var(--coral-dark); }
-.btn-secondary:hover:not(:disabled) { background:#ffd2c0; }
+.btn-secondary:hover:not(:disabled) { background:rgba(255,107,74,.26); }
 .btn-ghost { background:transparent; color:var(--text-muted); }
 .btn-ghost:hover:not(:disabled) { background:var(--disabled); }
 .btn-danger { background:var(--danger-soft); color:var(--danger); }
-.btn-danger:hover:not(:disabled) { background:#f6c6bf; }
+.btn-danger:hover:not(:disabled) { background:rgba(255,98,89,.26); }
 @keyframes armPulse {
   0%,100% { box-shadow:0 6px 16px rgba(255,107,74,.32); }
   50% { box-shadow:0 6px 26px rgba(255,107,74,.7); }
 }
 .btn-confirm-armed { animation: armPulse 1s ease-in-out infinite; }
 .btn-block { width:100%; }
-.btn-lg { padding:17px 22px; font-size:16px; }
+.btn-lg { padding:17px 22px; font-size:18px; }
 
 .field { margin-bottom:14px; }
-.field label { display:block; font-size:14px; font-weight:700; margin-bottom:6px; color:var(--text); }
+.field label { display:block; font-size:15px; font-weight:400; margin-bottom:6px; color:var(--text); font-family:var(--font-brand); }
 .field label .req { color:var(--danger); }
 input[type="text"], input[type="tel"], input[type="number"], input[type="date"], input[type="time"],
 input[type="password"], textarea, select {
   width:100%; padding:12px 14px; font-size:15px; border:1.5px solid var(--border); border-radius:16px;
-  background:#fff; color:var(--text); font-family:inherit; transition:border-color .15s;
+  background:var(--surface-2); color:var(--text); font-family:inherit; transition:border-color .15s;
 }
 input:focus, textarea:focus, select:focus { outline:none; border-color:var(--coral); }
 textarea { resize:vertical; min-height:90px; }
+input::placeholder, textarea::placeholder { color:var(--text-muted); opacity:.7; }
 
 .home-title { text-align:center; margin:32px 0 30px; }
 .home-badge {
   display:inline-block; padding:6px 14px; border-radius:999px; background:var(--sun-soft); color:var(--sun-text);
-  font-size:12.5px; font-weight:800; letter-spacing:.2px; margin-bottom:12px;
+  font-size:12.5px; font-weight:700; letter-spacing:.2px; margin-bottom:12px; font-family:"Pretendard","Noto Sans KR",sans-serif;
 }
-.home-title h1 { font-size:48px; margin-bottom:9px; font-family:var(--font-brand); font-weight:400; }
+.home-title h1 { font-size:52px; margin-bottom:9px; font-family:var(--font-brand); font-weight:400; }
 .home-title p { color:var(--text-muted); }
 .home-choices { display:grid; gap:14px; }
 @keyframes cardDrop { from{opacity:0; transform:translateY(22px) scale(.97);} to{opacity:1; transform:translateY(0) scale(1);} }
 .home-choice {
   border-radius:26px; padding:26px 24px; box-shadow:var(--shadow);
-  cursor:pointer; transition:all .18s; display:flex; align-items:center; gap:18px; border:2px solid transparent;
+  cursor:pointer; transition:all .18s; display:flex; align-items:center; gap:18px; border:1px solid var(--border);
   animation: cardDrop .36s cubic-bezier(.34,1.4,.64,1) both;
   background:var(--cream);
 }
-.home-choice:nth-child(1) { animation-delay:.02s; background:var(--coral-soft); }
-.home-choice:nth-child(2) { animation-delay:.08s; background:var(--mint-soft); }
-.home-choice:nth-child(3) { animation-delay:.14s; background:var(--sun-soft); }
-.home-choice:hover { transform:translateY(-3px); box-shadow:var(--shadow-soft); }
+.home-choice:nth-child(1) { animation-delay:.02s; }
+.home-choice:nth-child(2) { animation-delay:.08s; }
+.home-choice:nth-child(3) { animation-delay:.14s; }
+.home-choice:hover { transform:translateY(-3px); box-shadow:var(--shadow-soft); border-color:var(--coral); }
 .home-choice:active { transform:scale(.98); }
-.home-choice .txt strong { display:block; font-size:17px; font-weight:800; margin-bottom:3px; }
+.home-choice .txt strong { display:block; font-size:19px; font-weight:400; margin-bottom:3px; font-family:var(--font-brand); }
 .home-choice .txt span { color:var(--text-muted); font-size:14px; }
 
 .legend { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:var(--text-muted); }
@@ -148,7 +154,7 @@ textarea { resize:vertical; min-height:90px; }
 
 .choice-group { display:flex; gap:8px; flex-wrap:wrap; }
 .choice {
-  flex:1; min-width:100px; padding:13px; border:1.5px solid var(--border); border-radius:999px; background:#fff;
+  flex:1; min-width:100px; padding:13px; border:1.5px solid var(--border); border-radius:999px; background:var(--surface-2);
   cursor:pointer; text-align:center; font-weight:600; transition:all .15s; user-select:none;
 }
 .choice.selected { border-color:var(--coral); background:var(--coral); color:#fff; font-weight:800; }
@@ -156,14 +162,14 @@ textarea { resize:vertical; min-height:90px; }
 .choice:active:not(.disabled) { transform:scale(.95); }
 
 .modal-bg {
-  position:fixed; inset:0; background:rgba(14,11,7,.6); display:flex; align-items:flex-end; justify-content:center;
+  position:fixed; inset:0; background:rgba(2,3,8,.72); display:flex; align-items:flex-end; justify-content:center;
   z-index:100; animation:fadeIn .2s;
 }
 @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
 @keyframes slideUp { from{transform:translateY(20px);opacity:0;} to{transform:translateY(0);opacity:1;} }
 .modal {
-  background:#fff; border-radius:28px 28px 0 0; padding:22px; width:100%; max-width:720px;
-  max-height:90vh; overflow-y:auto; animation:slideUp .25s; box-shadow:0 -4px 28px rgba(0,0,0,.22);
+  background:var(--cream); border:1px solid var(--border); border-radius:28px 28px 0 0; padding:22px; width:100%; max-width:720px;
+  max-height:90vh; overflow-y:auto; animation:slideUp .25s; box-shadow:0 -4px 32px rgba(0,0,0,.5);
   scrollbar-width:thin; scrollbar-color:var(--border-strong) transparent;
 }
 .modal::-webkit-scrollbar { width:8px; }
@@ -180,9 +186,9 @@ textarea { resize:vertical; min-height:90px; }
 .booking-summary strong { color:var(--coral-dark); }
 
 .toast {
-  position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff;
-  padding:13px 22px; border-radius:999px; z-index:200; font-size:14px; box-shadow:0 10px 28px rgba(36,31,22,.3);
-  animation:slideUp .25s;
+  position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg);
+  padding:13px 22px; border-radius:999px; z-index:200; font-size:14px; box-shadow:0 10px 28px rgba(0,0,0,.5);
+  animation:slideUp .25s; font-weight:700;
 }
 
 .loading { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:var(--text-muted); }
@@ -197,7 +203,7 @@ textarea { resize:vertical; min-height:90px; }
 
 .success-badge {
   width:64px; height:64px; border-radius:50%; margin:0 auto 16px;
-  background:var(--mint); color:#fff; display:flex; align-items:center; justify-content:center;
+  background:var(--mint); color:var(--bg); display:flex; align-items:center; justify-content:center;
   font-size:30px; font-weight:700; line-height:1;
 }
 .success-badge::before { content:"✓"; }
@@ -207,23 +213,23 @@ textarea { resize:vertical; min-height:90px; }
 .teacher-hello-avatar {
   flex-shrink:0; width:52px; height:52px; border-radius:50%; background:var(--coral); color:#fff;
   display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800;
-  font-family:var(--font-display);
+  font-family:"Pretendard","Noto Sans KR",sans-serif;
 }
 .teacher-hello-greet { margin:0 0 2px; font-size:13px; color:var(--text-muted); font-weight:600; }
 
 /* ---- 통계 카드: 큰 숫자로 오늘 상황을 한눈에 ---- */
 .stat-row { display:flex; gap:10px; margin-bottom:16px; }
 .stat-card {
-  flex:1; background:var(--cream); border-radius:20px; padding:16px 14px; text-align:center; box-shadow:var(--shadow);
+  flex:1; background:var(--cream); border:1px solid var(--border); border-radius:20px; padding:16px 14px; text-align:center; box-shadow:var(--shadow);
 }
-.stat-card .num { font-family:var(--font-display); font-size:26px; font-weight:800; color:var(--ink); line-height:1.1; }
+.stat-card .num { font-family:"Pretendard","Noto Sans KR",sans-serif; font-size:26px; font-weight:800; color:var(--ink); line-height:1.1; }
 .stat-card .label { font-size:12px; color:var(--text-muted); margin-top:4px; font-weight:600; }
 .stat-card.stat-coral .num { color:var(--coral); }
 .stat-card.stat-mint .num { color:var(--mint); }
 
-.booking-item { border:1.5px solid var(--border); border-radius:20px; padding:16px; margin-bottom:10px; background:#fff; }
+.booking-item { border:1.5px solid var(--border); border-radius:20px; padding:16px; margin-bottom:10px; background:var(--cream); }
 .booking-item-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; gap:10px; }
-.booking-item-title { font-weight:800; font-size:15px; }
+.booking-item-title { font-weight:800; font-size:15px; font-family:"Pretendard","Noto Sans KR",sans-serif; }
 .booking-item-time { color:var(--coral); font-weight:700; font-size:13px; margin-bottom:8px; }
 .booking-item-meta { font-size:13px; color:var(--text-muted); margin-bottom:6px; }
 .booking-item-meta strong { color:var(--text); }
@@ -232,10 +238,10 @@ textarea { resize:vertical; min-height:90px; }
 .tag.method-phone { background:var(--mint-soft); color:var(--mint-dark); }
 
 .info-box {
-  background:var(--sun-soft); border:1px solid #f2dfa0; border-radius:18px; padding:13px 16px; font-size:13px;
+  background:var(--sun-soft); border:1px solid rgba(255,201,63,.3); border-radius:18px; padding:13px 16px; font-size:13px;
   color:var(--sun-text); margin-bottom:14px; display:flex; gap:10px; align-items:flex-start;
 }
-.info-box.danger { background:var(--danger-soft); border-color:#f0bdb3; color:#8a3226; }
+.info-box.danger { background:var(--danger-soft); border-color:rgba(255,98,89,.3); color:var(--danger); }
 
 .code-display {
   background:var(--disabled); padding:11px 14px; border-radius:14px; font-family:ui-monospace, monospace;
@@ -244,7 +250,7 @@ textarea { resize:vertical; min-height:90px; }
 
 .share-msg-box {
   display:block; width:100%; margin-top:8px; padding:13px 15px; border-radius:16px;
-  border:1.5px solid var(--border-strong); background:#fff; color:var(--text);
+  border:1.5px solid var(--border-strong); background:var(--surface-2); color:var(--text);
   font-family:inherit; font-size:13.5px; line-height:1.6; resize:vertical; white-space:pre-wrap;
 }
 .share-msg-box:focus { outline:none; border-color:var(--coral); }
@@ -254,13 +260,13 @@ textarea { resize:vertical; min-height:90px; }
 
 /* ---- 상담 시간표(학부모/교사 공통 슬롯 카드) ---- */
 .cb-wrap {
-  background:var(--cream);
+  background:var(--cream); border:1px solid var(--border);
   border-radius:24px; padding:18px 16px;
   box-shadow:var(--shadow);
 }
 .period-group { margin-bottom:18px; }
 .period-label { display:flex; justify-content:space-between; align-items:baseline; padding:4px 6px; margin-bottom:8px; }
-.period-label strong { font-family:var(--font-display); font-size:13px; color:var(--text); font-weight:800; }
+.period-label strong { font-family:"Pretendard","Noto Sans KR",sans-serif; font-size:13px; color:var(--text); font-weight:800; }
 .period-label span { font-size:12px; color:var(--text-muted); opacity:.9; }
 .cb-method-tag {
   font-size:11px; padding:4px 10px; border-radius:999px; font-weight:700;
@@ -273,14 +279,14 @@ textarea { resize:vertical; min-height:90px; }
 .pt-slot-list { display:flex; flex-direction:column; gap:8px; }
 .pt-slot-row {
   position:relative; display:flex; align-items:center; gap:10px; padding:13px 16px;
-  border-radius:18px; border:1.5px solid var(--border); background:var(--bg);
+  border-radius:18px; border:1.5px solid var(--border); background:var(--surface-2);
   user-select:none; transition:border-color .15s, transform .12s, background .15s;
 }
 .pt-slot-row::before {
   content:""; width:8px; height:8px; border-radius:50%; background:var(--border-strong); flex-shrink:0;
 }
 .pt-slot-time {
-  font-family:var(--font-display); font-size:16px; font-weight:800; color:var(--text); flex-shrink:0;
+  font-family:"Pretendard","Noto Sans KR",sans-serif; font-size:16px; font-weight:800; color:var(--text); flex-shrink:0;
   font-variant-numeric: tabular-nums;
 }
 .pt-slot-time-end { font-family:"Pretendard","Noto Sans KR",sans-serif; font-size:12px; font-weight:400; color:var(--text-muted); margin-left:2px; }
@@ -299,7 +305,7 @@ textarea { resize:vertical; min-height:90px; }
 .postit.postit--row {
   position:static; inset:auto; width:auto; height:auto; margin-left:auto; flex-direction:row;
   gap:6px; padding:6px 14px; border-radius:999px; box-shadow:none;
-  font-size:12px; opacity:1; background:var(--sun); color:var(--sun-text);
+  font-size:12px; opacity:1; background:var(--sun); color:#3a2c00;
 }
 .postit--row::after { display:none; }
 .postit--row small { font-weight:600; opacity:.75; font-size:10.5px; }
@@ -329,10 +335,10 @@ textarea { resize:vertical; min-height:90px; }
 .tt-lunch-day-sep { color:var(--text-muted); font-size:12px; flex-shrink:0; }
 
 /* ---- 담임 설정: 요일 x 교시 진짜 시간표 형태 ---- */
-.wd-week-title { font-size:14px; margin:18px 0 8px; color:var(--text); font-weight:700; }
+.wd-week-title { font-size:14px; margin:18px 0 8px; color:var(--text); font-weight:700; font-family:"Pretendard","Noto Sans KR",sans-serif; }
 .wd-week-title:first-child { margin-top:0; }
 .wd-grid-wrap { overflow-x:auto; border-radius:18px; border:1.5px solid var(--border); margin-bottom:6px; }
-.wd-grid { width:100%; border-collapse:collapse; font-size:12px; background:#fff; }
+.wd-grid { width:100%; border-collapse:collapse; font-size:12px; background:var(--surface-2); font-family:"Pretendard","Noto Sans KR",sans-serif; }
 .wd-grid th, .wd-grid td { border:1px solid var(--border); padding:4px; text-align:center; }
 .wd-grid thead th { background:var(--disabled); color:var(--text-muted); font-weight:800; padding:9px 4px; }
 .wd-col-date { display:block; font-weight:400; color:var(--coral); font-size:10px; white-space:nowrap; }
@@ -343,12 +349,12 @@ textarea { resize:vertical; min-height:90px; }
 .wd-row-head:hover { background:var(--coral-soft); }
 .wd-row-time { font-weight:400; color:var(--text-muted); font-size:11px; }
 .wd-edit-icon { display:block; font-size:11px; opacity:.6; margin-top:2px; }
-.wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:#fff; transition:background .12s, transform .1s; position:relative; }
+.wd-cell { cursor:pointer; min-width:64px; height:44px; vertical-align:middle; background:var(--surface-2); transition:background .12s, transform .1s; position:relative; }
 .wd-cell:hover { background:var(--coral-soft); }
 .wd-cell:active { transform:scale(.93); }
 .wd-cell--open { background:var(--mint-soft); }
 .wd-cell--booked { background:var(--sun-soft); cursor:not-allowed; }
-.wd-cell--empty { background:repeating-linear-gradient(135deg, var(--disabled), var(--disabled) 4px, #fff 4px, #fff 8px); cursor:default; }
+.wd-cell--empty { background:repeating-linear-gradient(135deg, var(--disabled), var(--disabled) 4px, var(--surface-2) 4px, var(--surface-2) 8px); cursor:default; }
 @keyframes cellPulse {
   0% { box-shadow: inset 0 0 0 2px var(--coral), 0 0 0 0 rgba(255,107,74,.45); }
   70% { box-shadow: inset 0 0 0 2px transparent, 0 0 0 9px rgba(255,107,74,0); }
@@ -362,8 +368,8 @@ textarea { resize:vertical; min-height:90px; }
 .wd-method-tag {
   display:inline-block; font-size:10px; padding:2px 7px; border-radius:999px; margin:1px; font-weight:700; cursor:pointer;
 }
-.wd-method-tag.m-visit { background:var(--sun); color:#5c4300; }
-.wd-method-tag.m-phone { background:var(--mint); color:#fff; }
+.wd-method-tag.m-visit { background:var(--sun); color:#3a2c00; }
+.wd-method-tag.m-phone { background:var(--mint); color:#02201c; }
 
 /* ---- 요일별 시간표 안의 점심시간 줄(드래그로 옮길 수 있다) ---- */
 .wd-lunch-row td {
@@ -371,13 +377,13 @@ textarea { resize:vertical; min-height:90px; }
 }
 .wd-lunch-cell {
   display:flex; align-items:center; justify-content:space-between; gap:10px;
-  padding:9px 14px; background:var(--sun); color:var(--sun-text); font-weight:700; font-size:12.5px;
+  padding:9px 14px; background:var(--sun); color:#3a2c00; font-weight:700; font-size:12.5px;
   cursor:grab; touch-action:none; user-select:none; transition:transform .12s, box-shadow .12s;
 }
 .wd-lunch-handle { font-size:11px; font-weight:600; opacity:.7; letter-spacing:.02em; }
 .wd-lunch-row--dragging { position:relative; z-index:2; }
 .wd-lunch-row--dragging .wd-lunch-cell {
-  cursor:grabbing; transform:scale(1.02); box-shadow:0 6px 16px rgba(60,40,20,.2); opacity:.92;
+  cursor:grabbing; transform:scale(1.02); box-shadow:0 6px 16px rgba(0,0,0,.4); opacity:.92;
 }
 .wd-lunch-dropzone td { padding:0; border:none; height:6px; }
 .wd-lunch-dropzone-bar {
@@ -394,13 +400,13 @@ textarea { resize:vertical; min-height:90px; }
 .wd-lunch-cell--mini {
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
   padding:5px 3px; border-radius:8px; font-size:10px; line-height:1.3;
-  background:var(--sun); color:var(--sun-text); font-weight:700;
+  background:var(--sun); color:#3a2c00; font-weight:700;
   cursor:grab; touch-action:none; user-select:none; transition:transform .12s, box-shadow .12s;
 }
 .wd-lunch-cell--mini .wd-lunch-handle { font-size:9px; font-weight:600; opacity:.65; }
 .wd-lunch-row--dragging.wd-lunch-cell-td { position:relative; z-index:2; }
 .wd-lunch-row--dragging .wd-lunch-cell--mini {
-  cursor:grabbing; transform:scale(1.06); box-shadow:0 6px 14px rgba(60,40,20,.2); opacity:.92;
+  cursor:grabbing; transform:scale(1.06); box-shadow:0 6px 14px rgba(0,0,0,.4); opacity:.92;
 }
 .wd-lunch-dropzone-td { padding:0 !important; border:none; height:6px; }
 .wd-lunch-dropzone-td.wd-lunch-dropzone--active { height:26px; }
@@ -413,7 +419,7 @@ textarea { resize:vertical; min-height:90px; }
   background:var(--sun);
   box-shadow:none;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:2px; color:var(--sun-text); font-size:13px; font-weight:700; text-align:center; line-height:1.35;
+  gap:2px; color:#3a2c00; font-size:13px; font-weight:700; text-align:center; line-height:1.35;
   transform-origin:top center; opacity:0; pointer-events:none;
 }
 .postit::after { content:none; }
@@ -432,9 +438,9 @@ textarea { resize:vertical; min-height:90px; }
 .postit.peeling { animation: peelOff .5s ease-in forwards; }
 
 /* ---- 달력형 날짜 선택 (네이버 예약 스타일) ---- */
-.cal-widget { background:var(--cream); border-radius:22px; padding:18px; }
+.cal-widget { background:var(--cream); border:1px solid var(--border); border-radius:22px; padding:18px; }
 .cal-header { display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:12px; }
-.cal-header strong { font-family:var(--font-display); font-size:16px; font-weight:800; }
+.cal-header strong { font-family:"Pretendard","Noto Sans KR",sans-serif; font-size:16px; font-weight:800; }
 .cal-nav-btn {
   width:32px; height:32px; border-radius:50%; border:none; background:var(--disabled);
   color:var(--text); font-size:16px; cursor:pointer; line-height:1;
@@ -443,7 +449,7 @@ textarea { resize:vertical; min-height:90px; }
 .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
 .cal-dow { text-align:center; font-size:12px; color:var(--text-muted); padding:4px 0; font-weight:600; }
 .cal-dow.sun { color:var(--danger); }
-.cal-dow.sat { color:#2b6cb0; }
+.cal-dow.sat { color:#6fa8e8; }
 .cal-day { position:relative; display:flex; align-items:center; justify-content:center; height:38px; }
 .cal-day--empty { visibility:hidden; }
 .cal-day button {
@@ -452,7 +458,7 @@ textarea { resize:vertical; min-height:90px; }
 }
 .cal-day button:active:not(:disabled) { transform:scale(.85); }
 .cal-day button.sun { color:var(--danger); }
-.cal-day button.sat { color:#2b6cb0; }
+.cal-day button.sat { color:#6fa8e8; }
 .cal-day button:disabled { opacity:.3; cursor:not-allowed; }
 .cal-day button.cal-day--weekend-off { text-decoration:line-through; }
 .cal-day button:hover:not(:disabled):not(.cal-day--selected) { background:var(--disabled); }
