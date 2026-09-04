@@ -741,7 +741,7 @@ function inferLunchFromSlots(slots, durationMinutes) {
   return { enabled: false };
 }
 
-function defaultDayLunch() { return { enabled: false, afterPeriod: 4, minutes: 50 }; }
+function defaultDayLunch() { return { enabled: true, afterPeriod: 4, minutes: 50 }; }
 function defaultLunchState() {
   const byDow = {};
   for (const d of DOW_KEYS) byDow[d] = defaultDayLunch();
@@ -901,27 +901,7 @@ function readFormIntoPattern() {
 
   pattern.startTime = $('#presetStart').value || '09:00';
   pattern.periodCount = Number($('#periodCount').value) || 6;
-  const lunchOn = $('#lunchEnable').checked;
-  const perWeekday = lunchOn && Boolean($('#lunchPerWeekday')?.checked);
-
-  if (!pattern.lunch) pattern.lunch = defaultLunchState();
-  pattern.lunch.perWeekday = perWeekday;
-
-  if (!lunchOn) {
-    pattern.lunch.shared = { ...pattern.lunch.shared, enabled: false };
-    for (const d of DOW_KEYS) pattern.lunch.byDow[d] = { ...pattern.lunch.byDow[d], enabled: false };
-  } else if (!perWeekday) {
-    pattern.lunch.shared = { enabled: true, afterPeriod: Number($('#lunchAfter').value) || 4, minutes: Number($('#lunchMinutes').value) || 50 };
-  } else {
-    for (const d of DOW_KEYS) {
-      pattern.lunch.byDow[d] = {
-        enabled: $(`#lunchEnable-${d}`)?.checked || false,
-        afterPeriod: Number($(`#lunchAfter-${d}`)?.value) || 4,
-        minutes: Number($(`#lunchMinutes-${d}`)?.value) || 50,
-      };
-    }
-  }
-
+  readLunchFormIntoPattern(pattern, '');
   regeneratePatternSlots();
 }
 
@@ -944,7 +924,8 @@ function regeneratePatternSlots() {
 }
 
 /** 점심시간 줄을 다른 교시 사이로 옮긴다(드래그 앤 드롭으로 놓았을 때 호출). dow가 없으면
- * "요일마다 다르게"가 꺼져 있는 것이므로 공통 설정을 옮긴다. */
+ * "요일마다 다르게"가 꺼져 있는 것이므로 공통 설정을 옮긴다. 1단계/2단계 화면 둘 다에
+ * 점심시간 폼이 있을 수 있어서, 그 중 실제로 화면에 떠 있는 입력칸만 값을 맞춰준다. */
 function moveLunch(dow, newAfterPeriod) {
   const pattern = teacherState.periodPattern;
   if (!pattern.lunch) return;
@@ -952,23 +933,21 @@ function moveLunch(dow, newAfterPeriod) {
     const lc = pattern.lunch.byDow[dow];
     if (!lc?.enabled || lc.afterPeriod === newAfterPeriod) return;
     lc.afterPeriod = newAfterPeriod;
-    const input = $(`#lunchAfter-${dow}`);
-    if (input) input.value = newAfterPeriod;
+    for (const prefix of ['', 'wd']) { const input = $(`#${prefix}lunchAfter-${dow}`); if (input) input.value = newAfterPeriod; }
   } else {
     const lc = pattern.lunch.shared;
     if (!lc?.enabled || lc.afterPeriod === newAfterPeriod) return;
     lc.afterPeriod = newAfterPeriod;
-    const input = $('#lunchAfter');
-    if (input) input.value = newAfterPeriod;
+    for (const prefix of ['', 'wd']) { const input = $(`#${prefix}lunchAfter`); if (input) input.value = newAfterPeriod; }
   }
   regeneratePatternSlots();
   renderPatternGrid();
   toast(`점심시간을 ${newAfterPeriod}교시 뒤로 옮겼어요`);
 }
 
-function renderAvailabilityPatternEditor() {
-  const pattern = teacherState.periodPattern;
-  const editor = $('#ta-editor');
+/** 점심시간 설정 폼(요일마다 다르게 토글 + 공통/요일별 입력)의 HTML을 만든다. idPrefix로
+ * 1단계(기본 형태 설정)와 2단계(요일별 시간표)에서 서로 다른 id를 쓰게 해 겹치지 않게 한다. */
+function lunchFormHtml(pattern, idPrefix) {
   const lunchState = pattern.lunch || defaultLunchState();
   const perWeekday = Boolean(lunchState.perWeekday);
   const shared = lunchState.shared || defaultDayLunch();
@@ -979,15 +958,109 @@ function renderAvailabilityPatternEditor() {
     return `
       <div class="tt-lunch-day-row">
         <label class="tt-lunch-day-check">
-          <input type="checkbox" id="lunchEnable-${d}" ${lc.enabled ? 'checked' : ''}>
+          <input type="checkbox" id="${idPrefix}lunchEnable-${d}" ${lc.enabled ? 'checked' : ''}>
           <span>${WEEKDAY_LABELS[d]}</span>
         </label>
-        <input type="number" id="lunchAfter-${d}" min="1" max="10" value="${lc.afterPeriod || shared.afterPeriod || 4}">
+        <input type="number" id="${idPrefix}lunchAfter-${d}" min="1" max="10" value="${lc.afterPeriod || shared.afterPeriod || 4}">
         <span class="tt-lunch-day-sep">교시 뒤</span>
-        <input type="number" id="lunchMinutes-${d}" min="10" max="120" value="${lc.minutes || shared.minutes || 50}">
+        <input type="number" id="${idPrefix}lunchMinutes-${d}" min="10" max="120" value="${lc.minutes || shared.minutes || 50}">
         <span class="tt-lunch-day-sep">분</span>
       </div>`;
   }).join('');
+
+  return `
+    <div id="${idPrefix}lunchSection">
+      <label class="tt-lunch-toggle" for="${idPrefix}lunchEnable">
+        <input type="checkbox" id="${idPrefix}lunchEnable" ${masterEnabled ? 'checked' : ''}>
+        <span>점심시간 넣기</span>
+      </label>
+      <div id="${idPrefix}lunchBody" style="display:${masterEnabled ? 'block' : 'none'};">
+        <label class="tt-lunch-perday-toggle" for="${idPrefix}lunchPerWeekday">
+          <input type="checkbox" id="${idPrefix}lunchPerWeekday" ${perWeekday ? 'checked' : ''}>
+          <span>요일마다 다르게 설정</span>
+        </label>
+        <div class="row" id="${idPrefix}lunchControls" style="display:${perWeekday ? 'none' : 'flex'};">
+          <div class="field"><label>몇 교시 뒤</label><input type="number" id="${idPrefix}lunchAfter" min="1" max="10" value="${shared.afterPeriod || 4}"></div>
+          <div class="field"><label>점심시간(분)</label><input type="number" id="${idPrefix}lunchMinutes" min="10" max="120" value="${shared.minutes || 50}"></div>
+        </div>
+        <div class="tt-lunch-days" id="${idPrefix}lunchPerDayForm" style="display:${perWeekday ? 'flex' : 'none'};">${dayRowsHtml}</div>
+      </div>
+    </div>
+  `;
+}
+
+/** lunchFormHtml로 그린 폼의 열고 닫는 토글 두 개(점심시간 넣기 / 요일마다 다르게)를 연결한다. */
+function wireLunchFormToggles(idPrefix) {
+  $(`#${idPrefix}lunchEnable`).addEventListener('change', () => {
+    $(`#${idPrefix}lunchBody`).style.display = $(`#${idPrefix}lunchEnable`).checked ? 'block' : 'none';
+  });
+  $(`#${idPrefix}lunchPerWeekday`).addEventListener('change', () => {
+    const per = $(`#${idPrefix}lunchPerWeekday`).checked;
+    $(`#${idPrefix}lunchControls`).style.display = per ? 'none' : 'flex';
+    $(`#${idPrefix}lunchPerDayForm`).style.display = per ? 'flex' : 'none';
+  });
+}
+
+/** lunchFormHtml로 그린 폼에 지금 입력된 값을 pattern.lunch에 반영한다(요일별 슬롯 재계산은 안 한다). */
+function readLunchFormIntoPattern(pattern, idPrefix) {
+  const lunchOn = $(`#${idPrefix}lunchEnable`).checked;
+  const perWeekday = lunchOn && Boolean($(`#${idPrefix}lunchPerWeekday`)?.checked);
+  if (!pattern.lunch) pattern.lunch = defaultLunchState();
+  pattern.lunch.perWeekday = perWeekday;
+
+  if (!lunchOn) {
+    pattern.lunch.shared = { ...pattern.lunch.shared, enabled: false };
+    for (const d of DOW_KEYS) pattern.lunch.byDow[d] = { ...pattern.lunch.byDow[d], enabled: false };
+  } else if (!perWeekday) {
+    pattern.lunch.shared = { enabled: true, afterPeriod: Number($(`#${idPrefix}lunchAfter`).value) || 4, minutes: Number($(`#${idPrefix}lunchMinutes`).value) || 50 };
+  } else {
+    for (const d of DOW_KEYS) {
+      pattern.lunch.byDow[d] = {
+        enabled: $(`#${idPrefix}lunchEnable-${d}`)?.checked || false,
+        afterPeriod: Number($(`#${idPrefix}lunchAfter-${d}`)?.value) || 4,
+        minutes: Number($(`#${idPrefix}lunchMinutes-${d}`)?.value) || 50,
+      };
+    }
+  }
+}
+
+const AFTERSCHOOL_FORM_HTML = `
+  <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
+  <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:10px;">
+    <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+    <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+    <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
+  </div>
+`;
+
+/** AFTERSCHOOL_FORM_HTML로 그린 토글·추가 버튼을 연결한다. onAdded는 추가된 뒤 그리드를
+ * 다시 그려야 하는 화면(2단계)에서만 넘긴다 — 1단계는 아직 그리드가 없어서 안 넘긴다. */
+function wireAfterschoolForm(onAdded) {
+  $('#afterschoolToggle').addEventListener('click', () => {
+    const form = $('#afterschoolForm');
+    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+  });
+  $('#afterAdd').addEventListener('click', () => {
+    const pattern = teacherState.periodPattern;
+    const startTime = $('#afterStart').value;
+    const endTime = $('#afterEnd').value;
+    if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
+    const consultMinutes = pattern.duration_minutes || 20;
+    const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
+    if (!pattern.extraSlots) pattern.extraSlots = [];
+    const existingStarts = new Set(pattern.extraSlots.map(s => s.start_time));
+    const toAdd = newSlots.filter(s => !existingStarts.has(s.start_time));
+    if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
+    pattern.extraSlots.push(...toAdd);
+    $('#afterschoolForm').style.display = 'none';
+    toast(`방과후 상담 ${toAdd.length}개를 추가했어요`);
+    onAdded?.();
+  });
+}
+
+function renderAvailabilityPatternEditor() {
+  const pattern = teacherState.periodPattern;
+  const editor = $('#ta-editor');
 
   editor.innerHTML = `
     <div class="tt-generator">
@@ -1010,23 +1083,8 @@ function renderAvailabilityPatternEditor() {
       </div>
       <div class="field"><label>상담시간(분)</label><input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}"></div>
 
-      <div id="lunchSection">
-        <label class="tt-lunch-toggle" for="lunchEnable">
-          <input type="checkbox" id="lunchEnable" ${masterEnabled ? 'checked' : ''}>
-          <span>점심시간 넣기</span>
-        </label>
-        <div id="lunchBody" style="display:${masterEnabled ? 'block' : 'none'};">
-          <label class="tt-lunch-perday-toggle" for="lunchPerWeekday">
-            <input type="checkbox" id="lunchPerWeekday" ${perWeekday ? 'checked' : ''}>
-            <span>요일마다 다르게 설정</span>
-          </label>
-          <div class="row" id="lunchControls" style="display:${perWeekday ? 'none' : 'flex'};">
-            <div class="field"><label>몇 교시 뒤</label><input type="number" id="lunchAfter" min="1" max="10" value="${shared.afterPeriod || 4}"></div>
-            <div class="field"><label>점심시간(분)</label><input type="number" id="lunchMinutes" min="10" max="120" value="${shared.minutes || 50}"></div>
-          </div>
-          <div class="tt-lunch-days" id="lunchPerDayForm" style="display:${perWeekday ? 'flex' : 'none'};">${dayRowsHtml}</div>
-        </div>
-      </div>
+      ${lunchFormHtml(pattern, '')}
+      ${AFTERSCHOOL_FORM_HTML}
 
       <button class="btn btn-primary btn-block" id="generateBtn">다음 · 요일별 시간표 만들기</button>
     </div>
@@ -1041,14 +1099,8 @@ function renderAvailabilityPatternEditor() {
   };
   syncPresetVisibility();
   $('#presetSelect').addEventListener('change', syncPresetVisibility);
-  $('#lunchEnable').addEventListener('change', () => {
-    $('#lunchBody').style.display = $('#lunchEnable').checked ? 'block' : 'none';
-  });
-  $('#lunchPerWeekday').addEventListener('change', () => {
-    const per = $('#lunchPerWeekday').checked;
-    $('#lunchControls').style.display = per ? 'none' : 'flex';
-    $('#lunchPerDayForm').style.display = per ? 'flex' : 'none';
-  });
+  wireLunchFormToggles('');
+  wireAfterschoolForm(null);
 
   $('#generateBtn').addEventListener('click', () => {
     if (teacherState.selectedDates.size === 0) return toast('먼저 달력에서 날짜를 골라주세요');
@@ -1063,42 +1115,42 @@ function openWeekdayEditor() {
 }
 
 function renderWeekdayEditor() {
+  const pattern = teacherState.periodPattern;
+  const isCustom = pattern.preset === 'custom';
   $('#main').innerHTML = `
     <div class="card">
       <h2>요일별 시간표</h2>
       <p class="subtitle" style="margin-bottom:14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✎)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
 
-      <button type="button" class="btn btn-ghost btn-block" id="afterschoolToggle" style="margin-bottom:10px;">방과후 상담 추가</button>
-      <div id="afterschoolForm" class="row" style="display:none;align-items:flex-end;margin-bottom:16px;">
-        <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
-        <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
-        <button type="button" class="btn btn-secondary" id="afterAdd" style="height:44px;">추가</button>
-      </div>
+      ${isCustom ? '' : `
+        <button type="button" class="btn btn-ghost btn-block" id="lunchSettingsToggle" style="margin-bottom:10px;">점심시간 설정</button>
+        <div id="lunchSettingsForm" style="display:none;margin-bottom:16px;">
+          ${lunchFormHtml(pattern, 'wd')}
+          <button type="button" class="btn btn-secondary btn-block" id="wdLunchApply" style="margin-top:8px;">점심시간 반영하기</button>
+        </div>
+      `}
+      ${AFTERSCHOOL_FORM_HTML}
 
       <div id="weekdayGrid" style="margin-bottom:16px;"></div>
       <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">고른 날짜에 저장</button>
     </div>
   `;
 
-  const pattern = teacherState.periodPattern;
-  $('#afterschoolToggle').addEventListener('click', () => {
-    const form = $('#afterschoolForm');
-    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
-  });
-  $('#afterAdd').addEventListener('click', () => {
-    const startTime = $('#afterStart').value;
-    const endTime = $('#afterEnd').value;
-    if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
-    const consultMinutes = pattern.duration_minutes || 20;
-    const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
-    if (!pattern.extraSlots) pattern.extraSlots = [];
-    const existingStarts = new Set(pattern.extraSlots.map(s => s.start_time));
-    const toAdd = newSlots.filter(s => !existingStarts.has(s.start_time));
-    if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
-    pattern.extraSlots.push(...toAdd);
-    $('#afterschoolForm').style.display = 'none';
-    renderPatternGrid();
-  });
+  if (!isCustom) {
+    $('#lunchSettingsToggle').addEventListener('click', () => {
+      const form = $('#lunchSettingsForm');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    });
+    wireLunchFormToggles('wd');
+    $('#wdLunchApply').addEventListener('click', () => {
+      readLunchFormIntoPattern(pattern, 'wd');
+      regeneratePatternSlots();
+      renderPatternGrid();
+      toast('점심시간을 반영했어요');
+    });
+  }
+
+  wireAfterschoolForm(() => renderPatternGrid());
   $('#saveDateBtn').addEventListener('click', saveAvailability);
 
   renderPatternGrid();
