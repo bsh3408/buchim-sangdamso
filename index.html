@@ -1,1685 +1,3590 @@
 <!doctype html>
+
 <html lang="ko">
+
 <head>
+
 <meta charset="utf-8" />
+
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="theme-color" content="#f7f8f5" />
-<meta name="description" content="우리지금만나에서 선생님과의 상담 시간을 예약하세요. 교사는 상담 시간표와 예약 현황을 한곳에서 관리할 수 있습니다." />
-<title>우리지금만나</title>
+
+<meta name="theme-color" content="#f4eddf" />
+
+<meta name="description" content="도란도란에서 선생님과의 상담 시간을 예약하세요. 교사는 상담 시간표와 예약 현황을 한곳에서 관리할 수 있습니다." />
+
+<title>도란도란</title>
+<meta name="application-name" content="도란도란">
+<meta name="apple-mobile-web-app-title" content="도란도란">
+<link rel="icon" type="image/png" href="./images/dorandoran-app.png">
+<link rel="apple-touch-icon" href="./images/dorandoran-app.png">
+
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-<link rel="stylesheet" href="./shared/chalkboard.css" />
+
+<link rel="stylesheet" href="./shared/chalkboard.css?v=dorandoran-brand-1" />
+
 </head>
+
 <body>
+
 <div id="app">
+
   <header>
-    <button type="button" class="logo" onclick="goHome()" aria-label="우리지금만나 홈"><span class="logo-mark"><img src="./images/highfive-icon.png" alt="" class="logo-icon"></span>우리지금만나</button>
+
+    <button type="button" class="logo brand-logo" onclick="goHome()" aria-label="도란도란 홈"><img src="./images/dorandoran-title.png" alt="도란도란" class="brand-title" width="220" height="48" fetchpriority="high"></button>
+
     <div class="header-actions">
+
       <button class="back-btn" id="backBtn" onclick="goBack()" style="display:none;">&larr; 뒤로</button>
+
       <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">교사 공간 <span aria-hidden="true">↗</span></button>
+
     </div>
+
   </header>
+
   <main id="main"></main>
-  <footer class="site-footer"><span>우리지금만나</span><span>선생님과 학부모를 잇는 상담 예약</span></footer>
+
+  <footer class="site-footer">made by. BYUN</footer>
+
 </div>
+
 <div id="modalRoot"></div>
 
+
+
 <script type="module">
+
 import { db } from './shared/db.js';
+
 import { escapeHtml } from './shared/escape.js';
-import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots } from './shared/timetable-presets.js';
+
+import { buildPresetSlots, buildCustomSlots, buildAfterschoolSlots, buildGapSlots } from './shared/timetable-presets.js';
+
 import { renderParentSlotGrid, peelPostit, groupByPeriod } from './shared/chalkboard.js';
+
 import { renderCalendar, renderParentCalendar } from './shared/calendar.js';
 
+
+
 /*****************************************************
+
  * 공용 유틸
+
  *****************************************************/
+
 const PURPOSES = ['생활태도', '인성', '학업성취 및 성적', '진로진학', '특기적성', '교우관계'];
+
 const MODE_LABEL = { phone: '전화', in_person: '방문' };
+
 const SCHOOL_LEVEL_SUFFIX = { elementary: '초등학교', middle: '중학교', high: '고등학교' };
+
 const SCHOOL_LEVEL_TO_PRESET = { elementary: 'elementary', middle: 'middle', high: 'high' };
+
 const DOW_KEYS = [1, 2, 3, 4, 5]; // JS Date#getDay() 기준 월=1 ~ 금=5
 
+
+
 function gradeClassLabel(grade, teacherClass) {
+
   return `${escapeHtml(String(grade ?? ''))}학년 ${escapeHtml(String(teacherClass ?? ''))}반`;
+
 }
+
 function plainGradeClass(grade, teacherClass) {
+
   return `${grade ?? ''}학년 ${teacherClass ?? ''}반`;
+
 }
+
 function periodDisplay(slot) {
+
   if (slot.period_label) return ` (${escapeHtml(slot.period_label)})`;
+
   if (slot.period) return ` (${slot.period}교시)`;
+
   return '';
+
 }
+
+
 
 function $(sel, parent) { return (parent || document).querySelector(sel); }
+
 function $$(sel, parent) { return Array.from((parent || document).querySelectorAll(sel)); }
+
 function el(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
+
 function toast(msg, ms) {
+
   const t = el(`<div class="toast">${escapeHtml(msg)}</div>`);
+
   document.body.appendChild(t);
+
   setTimeout(() => t.remove(), ms || 2400);
-}
-function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
-/** 되돌리기 어려운 동작(예약 신청·취소)은 버튼을 두 번 눌러야 실행되게 한다. 처음
- * 누르면 문구가 "정말 ~할까요?"로 바뀌며 살짝 두근거리고, 그 상태에서 다시 누르면
- * 실제로 fn()이 실행된다. 4초 안에 다시 안 누르면 원래 문구로 되돌아간다. */
-function armConfirm(btn, confirmLabel, fn) {
-  if (btn.dataset.armed === '1') {
-    delete btn.dataset.armed;
-    clearTimeout(Number(btn.dataset.armTimer));
-    btn.classList.remove('btn-confirm-armed');
-    fn();
-    return;
-  }
-  btn.dataset.armed = '1';
-  btn.dataset.originalLabel = btn.textContent;
-  btn.textContent = confirmLabel;
-  btn.classList.add('btn-confirm-armed');
-  const timer = setTimeout(() => {
-    if (btn.dataset.armed === '1') {
-      delete btn.dataset.armed;
-      btn.textContent = btn.dataset.originalLabel;
-      btn.classList.remove('btn-confirm-armed');
-    }
-  }, 4000);
-  btn.dataset.armTimer = String(timer);
-}
-// 등장 애니메이션이 끝나면 transform을 놓아준다 — 안 그러면 hover/active 때 쓰는
-// transform(살짝 뜨기, 눌림 등)이 애니메이션이 붙잡고 있는 값에 가려서 안 먹는다.
-document.addEventListener('animationend', (e) => {
-  if (['cardDrop', 'viewIn', 'emptyAppear'].includes(e.animationName)) e.target.style.animation = 'none';
-});
-function addMinutes(hhmm, minutes) {
-  const [h, m] = hhmm.split(':').map(Number);
-  const total = h * 60 + m + minutes;
-  const hh = String(Math.floor(total / 60) % 24).padStart(2, '0');
-  const mm = String(total % 60).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
-function formatLocalDate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-function dowLabel(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return ['일', '월', '화', '수', '목', '금', '토'][new Date(y, m - 1, d).getDay()];
+
 }
 
+function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
+
+/** 되돌리기 어려운 동작(예약 신청·취소)은 버튼을 두 번 눌러야 실행되게 한다. 처음
+
+ * 누르면 문구가 "정말 ~할까요?"로 바뀌며 살짝 두근거리고, 그 상태에서 다시 누르면
+
+ * 실제로 fn()이 실행된다. 4초 안에 다시 안 누르면 원래 문구로 되돌아간다. */
+
+function armConfirm(btn, confirmLabel, fn) {
+
+  if (btn.dataset.armed === '1') {
+
+    delete btn.dataset.armed;
+
+    clearTimeout(Number(btn.dataset.armTimer));
+
+    btn.classList.remove('btn-confirm-armed');
+
+    fn();
+
+    return;
+
+  }
+
+  btn.dataset.armed = '1';
+
+  btn.dataset.originalLabel = btn.textContent;
+
+  btn.textContent = confirmLabel;
+
+  btn.classList.add('btn-confirm-armed');
+
+  const timer = setTimeout(() => {
+
+    if (btn.dataset.armed === '1') {
+
+      delete btn.dataset.armed;
+
+      btn.textContent = btn.dataset.originalLabel;
+
+      btn.classList.remove('btn-confirm-armed');
+
+    }
+
+  }, 4000);
+
+  btn.dataset.armTimer = String(timer);
+
+}
+
+// 등장 애니메이션이 끝나면 transform을 놓아준다 — 안 그러면 hover/active 때 쓰는
+
+// transform(살짝 뜨기, 눌림 등)이 애니메이션이 붙잡고 있는 값에 가려서 안 먹는다.
+
+document.addEventListener('animationend', (e) => {
+
+  if (['cardDrop', 'viewIn', 'emptyAppear'].includes(e.animationName)) e.target.style.animation = 'none';
+
+});
+
+function addMinutes(hhmm, minutes) {
+
+  const [h, m] = hhmm.split(':').map(Number);
+
+  const total = h * 60 + m + minutes;
+
+  const hh = String(Math.floor(total / 60) % 24).padStart(2, '0');
+
+  const mm = String(total % 60).padStart(2, '0');
+
+  return `${hh}:${mm}`;
+
+}
+
+function formatLocalDate(d) {
+
+  const y = d.getFullYear();
+
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+
+  const day = String(d.getDate()).padStart(2, '0');
+
+  return `${y}-${m}-${day}`;
+
+}
+
+function dowLabel(dateStr) {
+
+  const [y, m, d] = dateStr.split('-').map(Number);
+
+  return ['일', '월', '화', '수', '목', '금', '토'][new Date(y, m - 1, d).getDay()];
+
+}
+
+
+
 /*****************************************************
+
  * 화면 스택
+
  *****************************************************/
+
 let viewStack = [];
+
 let currentView = null;
 
+
+
 /** 화면이 코르크보드에 새로 붙듯 살짝 떠오르는 전환 애니메이션을 다시 재생한다
+
  * (클래스를 껐다 리플로우 후 다시 켜야 매번 새로 재생된다). */
+
 function playViewIn(direction) {
+
   const main = $('#main');
+
   main.classList.remove('view-in-fwd', 'view-in-back');
+
   void main.offsetWidth;
+
   main.classList.add(direction === 'back' ? 'view-in-back' : 'view-in-fwd');
+
 }
+
 function setView(name, render, noPush) {
+
   if (!noPush && currentView) viewStack.push(currentView);
+
   currentView = { name, render };
+
   $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
+
   render();
+
   playViewIn('fwd');
+
   window.scrollTo(0, 0);
+
 }
+
 function goBack() {
+
   if (viewStack.length === 0) return;
+
   currentView = viewStack.pop();
+
   $('#backBtn').style.display = viewStack.length > 0 ? 'inline-flex' : 'none';
+
   currentView.render();
+
   playViewIn('back');
+
   window.scrollTo(0, 0);
+
 }
+
 function goHome() {
+
   viewStack = [];
+
   currentView = null;
+
   parentState = { parentCode: null, pageData: null, selectedDate: null };
+
   renderHome();
+
   playViewIn('back');
+
   window.scrollTo(0, 0);
+
 }
+
 function goTeacherDashboard() {
+
   viewStack = [];
+
   currentView = null;
+
   renderTeacherDashboard();
+
   playViewIn('back');
+
   window.scrollTo(0, 0);
+
 }
 
+
+
 /*****************************************************
+
  * 홈 화면
+
  *****************************************************/
+
 function renderHome() {
+
   setView('home', () => {
+
     $('#main').innerHTML = `
-      <section class="home-screen" aria-labelledby="home-heading">
-        <div class="home-intro">
-          <p class="eyebrow">학교와 가정 사이, 더 가까이</p>
-          <h1 id="home-heading">함께 이야기할 시간,<br>여기서 정해요.</h1>
-          <p class="home-description">아이에 대한 이야기에 집중할 수 있도록.<br>선생님과의 상담 약속을 편하게 잡아보세요.</p>
-          <div class="home-signature"><img src="./images/highfive-icon.png" alt="" width="28" height="28"><span>우리 아이를 위한, 우리만의 시간</span></div>
+
+      <section class="noticeboard-home" aria-labelledby="home-heading">
+
+        <div class="noticeboard-paper">
+
+          <span class="noticeboard-label">우리 반 상담 알림장</span>
+
+          <h1 id="home-heading">이야기가 필요한 날,<br>우리 만나요.</h1>
+
+          <p class="noticeboard-description">학부모님도, 학생도.<br>선생님과 이야기할 시간을 정해요.</p>
+
+          <div class="noticeboard-actions">
+
+            <button type="button" class="noticeboard-entry" onclick="startParent()">
+
+              <span><strong>학부모 상담</strong><small>아이에 대한 이야기를 나눠요</small></span>
+
+              <span class="noticeboard-arrow" aria-hidden="true">→</span>
+
+            </button>
+
+            <button type="button" class="noticeboard-entry noticeboard-student" disabled aria-describedby="student-coming-soon">
+
+              <span><strong>학생 상담</strong><small id="student-coming-soon">학생이 직접 예약하는 기능을 준비하고 있어요</small></span>
+
+              <span class="noticeboard-soon">준비 중</span>
+
+            </button>
+
+          </div>
+
         </div>
-        <div class="home-actions">
-          <button type="button" class="reservation-entry" onclick="startParent()">
-            <span class="entry-top"><span class="entry-audience">학부모</span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M7.5 3v4m9-4v4M3.5 10h17m-13 4h3m3 0h3m-9 3h3"/></svg></span>
-            <span class="entry-title">상담 예약하기</span>
-            <span class="entry-description">선생님께 받은 코드로<br>상담 가능한 날짜와 시간을 확인하세요.</span>
-            <span class="entry-bottom"><span>예약 시작하기</span><span class="entry-arrow" aria-hidden="true">→</span></span>
-          </button>
-          <button type="button" class="teacher-entry" onclick="startTeacher()">
-            <span class="txt"><span class="entry-audience">선생님</span><strong>상담 시간표 관리</strong><span>가능한 시간을 설정하고 예약을 확인하세요.</span></span>
-            <span class="entry-arrow" aria-hidden="true">→</span>
-          </button>
-          <p class="entry-note">예약 코드와 링크는 담임 선생님께 안내받을 수 있어요.</p>
-        </div>
+
+        <button type="button" class="noticeboard-teacher" onclick="startTeacher()">
+
+          <span><strong>선생님이신가요?</strong><small>우리 반 상담 시간표와 예약 관리</small></span>
+
+          <span aria-hidden="true">↗</span>
+
+        </button>
+
       </section>
+
     `;
+
   }, true);
+
 }
 
+
+
 /*****************************************************
+
  * 학부모 플로우
+
  *****************************************************/
+
 let parentState = { parentCode: null, pageData: null, selectedDate: null };
 
+
+
 function startParent() {
+
   setView('parent-enter', () => {
+
     $('#main').innerHTML = `
+
       <div class="card entry-card">
+
         <p class="eyebrow">학부모 상담 예약</p>
+
         <h1>예약 코드를 입력해주세요</h1>
+
         <p class="subtitle">선생님께 받은 코드로 우리 반 상담 시간표를 확인해요.</p>
+
         <div class="field code-field">
+
           <label for="pc-code">예약 코드</label>
+
           <input type="text" id="pc-code" maxlength="10" placeholder="예: A3F9K2" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="code-help">
+
         </div>
+
         <button class="btn btn-primary btn-block" id="pc-submit">신청하러 가기</button>
+
         <p class="form-note" id="code-help">코드를 받지 못하셨다면 담임 선생님께 문의해주세요.</p>
+
       </div>
+
     `;
+
     $('#pc-code').focus();
+
     $('#pc-code').addEventListener('keypress', e => { if (e.key === 'Enter') submitParentCode(); });
+
     $('#pc-submit').addEventListener('click', submitParentCode);
+
   });
+
 }
+
+
 
 async function submitParentCode() {
+
   const code = $('#pc-code').value.trim().toUpperCase();
+
   if (!code) return toast('코드를 입력해주세요');
+
   const btn = $('#pc-submit');
+
   btn.disabled = true; btn.textContent = '확인 중...';
+
   try {
+
     await loadParentSchedule(code);
+
     renderParentTimetableView();
+
   } catch (err) {
+
     btn.disabled = false; btn.textContent = '신청하러 가기';
+
     toast(err.message);
+
   }
+
 }
+
+
 
 async function loadParentSchedule(parentCode) {
+
   const data = await db.getPublicSchedule(parentCode);
+
   parentState.parentCode = parentCode;
+
   parentState.pageData = data;
+
   parentState.selectedDate = data.dates[0]?.date ?? null;
+
   history.replaceState(null, '', `${location.pathname}?code=${encodeURIComponent(parentCode)}`);
+
 }
+
+
 
 function renderParentTimetableView() {
+
   const data = parentState.pageData;
+
   setView('parent-timetable', () => {
+
     $('#main').innerHTML = `
+
       <div class="card">
+
         <h2>${gradeClassLabel(data.grade, data.teacher_class)} · ${escapeHtml(data.teacher_name)} 선생님</h2>
+
         <p class="subtitle">상담할 날짜를 고른 뒤, 예약 가능한 시간을 선택해주세요.</p>
 
+
+
         ${data.dates.length === 0 ? '<div class="empty-state"><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
+
           <div id="pt-calendar" style="margin-bottom:16px;"></div>
+
           <div class="legend">
+
             <div class="legend-item"><div class="legend-box available"></div>예약 가능</div>
+
             <div class="legend-item"><div class="legend-box booked"></div>예약됨 (눌러서 취소)</div>
+
           </div>
+
           <div class="cb-wrap" id="pt-timetable"></div>
+
         `}
+
       </div>
+
     `;
+
     if (data.dates.length > 0) {
+
       renderParentCalendarWidget();
+
       renderParentTimetableBody();
+
     }
+
   });
+
 }
+
+
 
 function renderParentCalendarWidget() {
+
   renderParentCalendar($('#pt-calendar'), {
+
     availableDates: parentState.pageData.dates.map(d => d.date),
+
     selectedDate: parentState.selectedDate,
+
     onSelectDate: (date) => {
+
       parentState.selectedDate = date;
+
       renderParentCalendarWidget();
+
       renderParentTimetableBody();
+
     },
+
   });
+
 }
+
+
 
 function renderParentTimetableBody() {
+
   const area = $('#pt-timetable');
+
   const dateEntry = parentState.pageData.dates.find(d => d.date === parentState.selectedDate);
+
   area.innerHTML = `<div class="cb-title" style="opacity:.7;font-size:13px;margin-bottom:14px;">${dateEntry.date} (${dowLabel(dateEntry.date)})</div>`;
+
   for (const group of groupByPeriod(dateEntry.slots)) {
+
     const block = el(`<div class="period-group"></div>`);
+
     if (group.period_label) {
+
       block.innerHTML = `<div class="period-label"><strong>${escapeHtml(group.period_label)}</strong></div>`;
+
     } else if (group.period) {
+
       block.innerHTML = `<div class="period-label"><strong>${group.period}교시</strong><span>${group.period_range}</span></div>`;
+
     }
+
     const grid = document.createElement('div');
+
     block.appendChild(grid);
+
     area.appendChild(block);
+
     renderParentSlotGrid(grid, group.slots, {
+
       onEmptyClick: (slot) => openBookingModal(slot, dateEntry),
+
       onFilledClick: (slot, slotEl) => openCancelModal(slot, dateEntry, slotEl),
+
     }, dateEntry.duration_minutes);
+
   }
+
 }
 
+
+
 /*****************************************************
+
  * 예약 / 취소 모달
+
  *****************************************************/
+
 function openBookingModal(slot, dateEntry) {
+
   const page = parentState.pageData;
+
   const endTime = addMinutes(slot.start_time.slice(0, 5), dateEntry.duration_minutes || 20);
+
   const periodText = periodDisplay(slot);
+
   const allowedModes = slot.mode === 'both' ? ['in_person', 'phone'] : [slot.mode];
 
+
+
   const methodChoices = allowedModes.map(m =>
+
     `<div class="choice" data-method="${m}">${m === 'in_person' ? '방문' : '전화'}</div>`
+
   ).join('');
+
   const purposeChoices = PURPOSES.map(p => `<div class="choice" data-purpose="${escapeHtml(p)}">${escapeHtml(p)}</div>`).join('');
 
+
+
   const bg = el(`
+
     <div class="modal-bg" id="bookBg">
+
       <div class="modal">
+
         <div class="modal-header">
+
           <h2>상담 예약</h2>
+
           <button class="modal-close" id="bookClose">✕</button>
+
         </div>
+
         <div class="booking-summary">
+
           <strong>${gradeClassLabel(page.grade, page.teacher_class)}</strong><br>
+
           ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)} ~ ${endTime}
+
         </div>
+
         <div class="field">
+
           <label>학생 번호 <span class="req">*</span></label>
+
           <input type="number" id="bk-num" min="1" max="50" placeholder="예: 12">
+
         </div>
+
         <div class="field">
+
           <label>학생 이름 <span class="req">*</span></label>
+
           <input type="text" id="bk-sname" placeholder="예: 홍길동">
+
         </div>
+
         <div class="row">
+
           <div class="field">
+
             <label>학부모 성함 <span class="req">*</span></label>
+
             <input type="text" id="bk-pname" placeholder="예: 홍길동 학부모">
+
           </div>
+
           <div class="field">
+
             <label>학부모 연락처 <span class="req">*</span></label>
+
             <input type="tel" id="bk-pphone" placeholder="010-0000-0000">
+
           </div>
+
         </div>
+
         <div class="hint" style="margin-bottom:14px;">취소할 때는 여기 입력한 학부모 연락처로 본인 확인을 해요. 꼭 정확히 입력해주세요.</div>
+
         <div class="field">
+
           <label>상담 방법 <span class="req">*</span></label>
+
           <div class="choice-group" id="method-group">${methodChoices}</div>
+
           <div class="hint">선생님이 이 시간에 가능한 방법만 선택할 수 있어요</div>
+
         </div>
+
         <div class="field">
+
           <label>상담 목적 <span class="req">*</span> <span style="font-weight:400;color:var(--text-muted);font-size:12px;">(중복 선택 가능)</span></label>
+
           <div class="choice-group" id="purpose-group">${purposeChoices}</div>
+
         </div>
+
         <div class="field">
+
           <label>상담 내용 (선택)</label>
+
           <textarea id="bk-content" placeholder="선생님께 묻고 싶은 질문이나 미리 알려드릴 내용을 적어주세요"></textarea>
+
         </div>
+
         <div class="field" style="margin-top:20px;">
+
           <button class="btn btn-primary btn-block btn-lg" id="bk-submit">예약 신청하기</button>
+
         </div>
+
       </div>
+
     </div>
+
   `);
+
   document.getElementById('modalRoot').appendChild(bg);
 
+
+
   bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
+
   $('#bookClose', bg).addEventListener('click', closeModal);
 
+
+
   if (allowedModes.length === 1) $(`.choice[data-method]`, bg).classList.add('selected');
+
   $$('#method-group .choice', bg).forEach(c => {
+
     c.addEventListener('click', () => {
+
       $$('#method-group .choice', bg).forEach(x => x.classList.remove('selected'));
+
       c.classList.add('selected');
+
     });
+
   });
+
   $$('#purpose-group .choice', bg).forEach(c => {
+
     c.addEventListener('click', () => c.classList.toggle('selected'));
+
   });
+
+
 
   $('#bk-submit', bg).addEventListener('click', () => submitBooking(slot, dateEntry, bg));
+
 }
+
+
 
 function submitBooking(slot, dateEntry, bg) {
+
   const num = $('#bk-num', bg).value.trim();
+
   const sname = $('#bk-sname', bg).value.trim();
+
   const pname = $('#bk-pname', bg).value.trim();
+
   const pphone = $('#bk-pphone', bg).value.trim();
+
   const methodEl = $('#method-group .choice.selected', bg);
+
   const method = methodEl ? methodEl.dataset.method : '';
+
   const purposes = $$('#purpose-group .choice.selected', bg).map(x => x.dataset.purpose);
+
   const content = $('#bk-content', bg).value.trim();
 
+
+
   if (!num) return toast('학생 번호를 입력해주세요');
+
   if (!sname) return toast('학생 이름을 입력해주세요');
+
   if (!pname) return toast('학부모 성함을 입력해주세요');
+
   if (!pphone) return toast('학부모 연락처를 입력해주세요');
+
   if (!method) return toast('상담 방법을 선택해주세요');
+
   if (purposes.length === 0) return toast('상담 목적을 1개 이상 선택해주세요');
 
+
+
   armConfirm($('#bk-submit', bg), '정말 신청할까요? 다시 누르면 확정돼요', () => {
+
     doSubmitBooking(slot, dateEntry, bg, { num, sname, pname, pphone, method, purposes, content });
+
   });
+
 }
+
+
 
 async function doSubmitBooking(slot, dateEntry, bg, data) {
+
   const btn = $('#bk-submit', bg);
+
   btn.disabled = true; btn.textContent = '예약 중...';
 
+
+
   try {
+
     const page = parentState.pageData;
+
     const className = plainGradeClass(page.grade, page.teacher_class);
+
     const cancelToken = await db.bookSlot(
+
       parentState.parentCode, slot.slot_id,
+
       data.num, data.sname, className, data.pname, data.pphone, data.purposes, data.content, data.method
+
     );
+
     slot.occupied = true;
+
     slot.booking_ref = { student_number: data.num, cancel_token: cancelToken };
+
     closeModal();
+
     showBookingSuccess(slot, dateEntry, data.sname, data.method);
+
   } catch (err) {
+
     btn.disabled = false; btn.textContent = '예약 신청하기';
+
     btn.classList.remove('btn-confirm-armed');
+
     if (err.message === 'ALREADY_BOOKED') toast('방금 다른 분이 신청했어요. 새로고침해서 다른 시간을 골라주세요.');
+
     else toast(err.message);
+
   }
+
 }
+
+
 
 function showBookingSuccess(slot, dateEntry, studentName, method) {
+
   setView('parent-done', () => {
+
     const page = parentState.pageData;
+
     const periodText = periodDisplay(slot);
+
     $('#main').innerHTML = `
+
       <div class="card" style="text-align:center;padding:36px 22px;">
+
         <div class="success-badge"></div>
+
         <h1 style="font-size:20px;">예약이 완료되었어요!</h1>
+
         <p class="subtitle">선생님께 신청 내용이 전달됩니다</p>
+
         <div style="background:var(--primary-soft);padding:16px;border-radius:12px;text-align:left;margin:16px 0;">
+
           <div style="margin-bottom:6px;"><strong>선생님</strong> · ${gradeClassLabel(page.grade, page.teacher_class)} ${escapeHtml(page.teacher_name)}</div>
+
           <div style="margin-bottom:6px;"><strong>학생</strong> · ${escapeHtml(studentName)}</div>
+
           <div style="margin-bottom:6px;"><strong>일시</strong> · ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}</div>
+
           <div><strong>상담 방법</strong> · ${MODE_LABEL[method]}</div>
+
         </div>
+
         <div class="info-box">
+
           <div>예약을 취소하려면, 시간표에서 본인이 예약한 포스트잇 칸을 다시 눌러 <strong>예약할 때 입력한 학부모 연락처</strong>를 입력하시면 됩니다.</div>
+
         </div>
+
         <button class="btn btn-primary btn-block" onclick="goHome()">홈으로 돌아가기</button>
+
         <button class="btn btn-ghost btn-block" style="margin-top:8px;" id="pd-back">이 시간표로 돌아가기</button>
+
       </div>
+
     `;
+
     $('#pd-back').addEventListener('click', goBack);
+
   });
+
 }
+
+
 
 function openCancelModal(slot, dateEntry, slotEl) {
+
   const ref = slot.booking_ref;
+
   if (!ref?.cancel_token) return toast('이 예약은 취소 정보를 불러올 수 없습니다.');
+
   const periodText = periodDisplay(slot);
+
   const page = parentState.pageData;
 
+
+
   const bg = el(`
+
     <div class="modal-bg" id="cancelBg">
+
       <div class="modal">
+
         <div class="modal-header">
+
           <h2>예약 취소</h2>
+
           <button class="modal-close" id="cancelClose">✕</button>
+
         </div>
+
         <div class="booking-summary">
+
           <strong>${gradeClassLabel(page.grade, page.teacher_class)}</strong><br>
+
           ${dateEntry.date}${periodText} ${slot.start_time.slice(0, 5)}
+
         </div>
+
         <div class="info-box danger">
+
           <div>본인이 예약한 내용이 맞다면, 예약할 때 입력한 <strong>학부모 연락처</strong>를 입력하고 취소해주세요.</div>
+
         </div>
+
         <div class="field">
+
           <label>학부모 연락처 <span class="req">*</span></label>
+
           <input type="tel" id="cx-phone" placeholder="예약할 때 입력한 연락처">
+
         </div>
+
         <div style="display:flex;gap:8px;margin-top:16px;">
+
           <button class="btn btn-ghost" style="flex:1;" id="cx-close">닫기</button>
+
           <button class="btn btn-danger" style="flex:1;" id="cx-submit">예약 취소하기</button>
+
         </div>
+
       </div>
+
     </div>
+
   `);
+
   document.getElementById('modalRoot').appendChild(bg);
+
   bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
+
   $('#cancelClose', bg).addEventListener('click', closeModal);
+
   $('#cx-close', bg).addEventListener('click', closeModal);
+
   setTimeout(() => $('#cx-phone', bg).focus(), 100);
+
   $('#cx-phone', bg).addEventListener('keypress', e => { if (e.key === 'Enter') doCancelBooking(slot, slotEl, bg); });
+
   $('#cx-submit', bg).addEventListener('click', () => doCancelBooking(slot, slotEl, bg));
+
 }
+
+
 
 function doCancelBooking(slot, slotEl, bg) {
+
   const phone = $('#cx-phone', bg).value.trim();
+
   if (!phone) return toast('학부모 연락처를 입력해주세요');
+
   armConfirm($('#cx-submit', bg), '정말 취소할까요? 다시 누르면 취소돼요', () => {
+
     doConfirmCancelBooking(slot, slotEl, bg, phone);
+
   });
+
 }
+
+
 
 async function doConfirmCancelBooking(slot, slotEl, bg, phone) {
+
   const btn = $('#cx-submit', bg);
+
   btn.disabled = true; btn.textContent = '처리 중...';
+
   try {
+
     await db.cancelBooking(slot.booking_ref.cancel_token, phone);
+
     closeModal();
+
     toast('예약이 취소되었습니다');
+
     slot.occupied = false;
+
     slot.booking_ref = null;
+
     peelPostit(slotEl, () => renderParentTimetableBody());
+
   } catch (err) {
+
     btn.disabled = false; btn.textContent = '예약 취소하기';
+
     btn.classList.remove('btn-confirm-armed');
+
     toast(err.message);
+
   }
+
 }
+
+
 
 /*****************************************************
+
  * 담임 플로우
+
  *****************************************************/
+
 const WEEKDAY_LABELS = [null, '월', '화', '수', '목', '금'];
 
+
+
 let teacherState = {
+
   pageId: null, adminCode: null, teacherName: '', school: '', schoolLevel: '', grade: '', teacherClass: '',
+
   parentCode: null,
-  dates: new Map(), // date -> 서버에서 불러온 실제 슬롯(예약 포함)
+
+  dates: new Map(), // date -> 서버에서 불러온 실제 슬롯(예약 포함, 학부모·학생 섞여 있음)
+
   selectedDates: new Set(), // 달력에서 고른 날짜(저장 대상)
-  periodPattern: null, // { preset, duration_minutes, slots:[...] } 교시 시간 틀(모든 날짜 공통)
+
+  periodPattern: null, // { preset, duration_minutes, slots:[...] } 학부모 상담의 교시 시간 틀(모든 날짜 공통)
+
+  studentPattern: null, // 학생 상담의 시간 틀 — periodSlotsByDow는 교시가 아니라 그 사이 쉬는시간·점심시간을 담는다
+
+  editingAudience: 'parent', // 지금 어느 쪽 상담 시간을 편집 중인지('parent' | 'student')
+
   dateOpen: {}, // dateOpen[날짜][교시] = { is_open, mode } — 날짜마다 따로 열고 닫는다
+
   justChangedKey: null, // 방금 열고/닫은 칸("날짜|시작시각") — 그 칸에만 확인 애니메이션을 준다
+
 };
 
-function startTeacher() {
-  setView('teacher-choice', () => {
-    $('#main').innerHTML = `
-      <section class="teacher-welcome">
-        <div class="section-heading">
-          <p class="eyebrow">교사 공간</p>
-          <h1>상담 준비를 한곳에서.</h1>
-          <p class="subtitle">우리 반 상담 시간을 설정하고, 신청 내용을 확인하세요.</p>
-        </div>
-        <div class="home-choices">
-          <button type="button" class="home-choice" id="tc-login">
-            <span class="txt"><strong>로그인</strong><span>등록한 이름과 관리 코드로 시작하세요.</span></span>
-          </button>
-          <button type="button" class="home-choice" id="tc-register">
-            <span class="txt"><strong>처음 이용하시나요?</strong><span>교사 정보를 등록하고 상담 시간표를 만드세요.</span></span>
-          </button>
-        </div>
-      </section>
-    `;
-    $('#tc-login').addEventListener('click', startTeacherLogin);
-    $('#tc-register').addEventListener('click', startTeacherRegister);
-  });
+/** 지금 편집 중인 쪽(학부모/학생)의 시간 틀을 돌려준다. 요일별 시간표 화면 등 대부분의
+ * 함수는 이 함수를 통해서만 pattern에 접근해, 같은 화면 로직을 두 audience가 함께 쓴다. */
+function activePattern() {
+  return teacherState.editingAudience === 'student' ? teacherState.studentPattern : teacherState.periodPattern;
 }
+
+
+
+function startTeacher() {
+
+  setView('teacher-choice', () => {
+
+    $('#main').innerHTML = `
+
+      <section class="teacher-welcome">
+
+        <div class="section-heading">
+
+          <p class="eyebrow">교사 공간</p>
+
+          <h1>상담 준비를 한곳에서.</h1>
+
+          <p class="subtitle">우리 반 상담 시간을 설정하고, 신청 내용을 확인하세요.</p>
+
+        </div>
+
+        <div class="home-choices">
+
+          <button type="button" class="home-choice" id="tc-login">
+
+            <span class="txt"><strong>로그인</strong><span>등록한 이름과 관리 코드로 시작하세요.</span></span>
+
+          </button>
+
+          <button type="button" class="home-choice" id="tc-register">
+
+            <span class="txt"><strong>처음 이용하시나요?</strong><span>교사 정보를 등록하고 상담 시간표를 만드세요.</span></span>
+
+          </button>
+
+        </div>
+
+      </section>
+
+    `;
+
+    $('#tc-login').addEventListener('click', startTeacherLogin);
+
+    $('#tc-register').addEventListener('click', startTeacherRegister);
+
+  });
+
+}
+
+
 
 function startTeacherLogin() {
+
   setView('teacher-login', () => {
+
     $('#main').innerHTML = `
+
       <div class="card entry-card">
+
         <p class="eyebrow">교사 공간</p>
+
         <h1>다시 만나 반가워요</h1>
+
         <p class="subtitle">등록한 이름과 관리 코드로 로그인해주세요.</p>
+
         <div class="field"><label for="tl-name">이름</label><input type="text" id="tl-name" autocomplete="username" placeholder="예: 김민준"></div>
+
         <div class="field"><label for="tl-code">관리 코드</label><input type="password" id="tl-code" autocomplete="current-password" placeholder="등록할 때 정한 코드"></div>
+
         <button class="btn btn-primary btn-block" id="tl-submit">로그인</button>
+
       </div>
+
     `;
+
     $('#tl-name').focus();
+
     $('#tl-code').addEventListener('keypress', e => { if (e.key === 'Enter') doTeacherLogin(); });
+
     $('#tl-submit').addEventListener('click', doTeacherLogin);
+
   });
+
 }
+
+
 
 async function doTeacherLogin() {
+
   const name = $('#tl-name').value.trim();
+
   const code = $('#tl-code').value;
+
   if (!name || !code) return toast('이름과 코드를 모두 입력해주세요');
 
+
+
   const btn = $('#tl-submit');
+
   btn.disabled = true; btn.textContent = '확인 중...';
+
   try {
+
     const res = await db.teacherLogin(name, code);
+
     teacherState.pageId = res.page_id;
+
     teacherState.adminCode = code;
+
     teacherState.school = res.school;
+
     teacherState.schoolLevel = res.school_level;
+
     teacherState.grade = res.grade;
+
     teacherState.teacherClass = res.teacher_class;
+
     await loadTeacherSchedule();
+
     renderTeacherDashboard();
+
   } catch (err) {
+
     btn.disabled = false; btn.textContent = '로그인';
+
     toast(err.message);
+
   }
+
 }
+
+
 
 function startTeacherRegister() {
+
   setView('teacher-register', () => {
+
     $('#main').innerHTML = `
+
       <div class="card entry-card register-card">
+
         <p class="eyebrow">교사 공간</p>
+
         <h1>우리 반 상담을 시작해요</h1>
+
         <p class="subtitle">선생님과 학급 정보를 등록해주세요.</p>
+
         <div class="info-box">
+
           <div>관리 코드는 로그인할 때 필요해요. 기억할 수 있는 코드로 설정해주세요.</div>
+
         </div>
+
         <div class="field"><label for="tr-name">이름</label><input type="text" id="tr-name" placeholder="예: 김민준"></div>
+
         <div class="field"><label for="tr-code">관리 코드 (4자리 이상)</label><input type="password" id="tr-code" placeholder="나만 아는 코드"></div>
+
         <div class="field">
+
           <label for="tr-school">학교</label>
+
           <div class="row school-row">
+
             <input type="text" id="tr-school" placeholder="예: 신장" style="flex:2;">
+
             <div class="choice-group" id="tr-level-group" style="flex:3;">
+
               <div class="choice" data-level="elementary">초등학교</div>
+
               <div class="choice" data-level="middle">중학교</div>
+
               <div class="choice" data-level="high">고등학교</div>
+
             </div>
+
           </div>
+
         </div>
+
         <div class="row">
+
           <div class="field"><label for="tr-grade">학년</label><input type="number" id="tr-grade" min="1" max="6" placeholder="예: 2"></div>
+
           <div class="field"><label for="tr-class">반</label><input type="number" id="tr-class" min="1" max="20" placeholder="예: 3"></div>
+
         </div>
+
         <button class="btn btn-primary btn-block" id="tr-submit">등록하기</button>
+
       </div>
+
     `;
+
     let level = null;
+
     $$('#tr-level-group .choice').forEach(c => {
+
       c.addEventListener('click', () => {
+
         level = c.dataset.level;
+
         $$('#tr-level-group .choice').forEach(x => x.classList.toggle('selected', x === c));
+
       });
+
     });
+
     $('#tr-submit').addEventListener('click', () => doTeacherRegister(() => level));
+
   });
+
 }
+
+
 
 async function doTeacherRegister(getLevel) {
+
   const name = $('#tr-name').value.trim();
+
   const code = $('#tr-code').value;
+
   const schoolPrefix = $('#tr-school').value.trim();
+
   const level = getLevel();
+
   const grade = $('#tr-grade').value.trim();
+
   const teacherClass = $('#tr-class').value.trim();
+
   if (!name || !code || !schoolPrefix || !level || !grade || !teacherClass) {
+
     return toast('모든 항목을 입력해주세요');
+
   }
+
   const school = `${schoolPrefix}${SCHOOL_LEVEL_SUFFIX[level]}`;
 
+
+
   const btn = $('#tr-submit');
+
   btn.disabled = true; btn.textContent = '등록 중...';
+
   try {
+
     const pageId = await db.getOrCreateTeacher(name, code, school, level, grade, teacherClass);
+
     teacherState.pageId = pageId;
+
     teacherState.adminCode = code;
+
     teacherState.school = school;
+
     teacherState.schoolLevel = level;
+
     teacherState.grade = grade;
+
     teacherState.teacherClass = teacherClass;
+
     await loadTeacherSchedule();
+
     renderTeacherDashboard();
+
   } catch (err) {
+
     btn.disabled = false; btn.textContent = '등록하기';
+
     toast(err.message);
+
   }
+
 }
+
+
 
 async function loadTeacherSchedule() {
+
   const data = await db.getTeacherSchedule(teacherState.pageId, teacherState.adminCode);
+
   teacherState.teacherName = data.teacher_name;
+
   teacherState.parentCode = data.parent_code;
+
   teacherState.dates = new Map(data.dates.map(d => [d.date, {
+
     ...d,
-    slots: d.slots.map(s => ({ ...s, start_time: s.start_time.slice(0, 5) })),
+
+    slots: d.slots.map(s => ({ ...s, start_time: s.start_time.slice(0, 5), audience: s.audience || 'parent' })),
+
   }]));
+
   teacherState.selectedDates = new Set(teacherState.dates.keys());
-  derivePatternFromDates();
+
+  teacherState.periodPattern = deriveAudiencePattern('parent');
+
+  teacherState.studentPattern = deriveAudiencePattern('student');
+
+  teacherState.dateOpen = deriveDateOpen();
+
 }
 
-/** 서버에 저장된 날짜들의 시간 구조·날짜별 열림 상태를 편집용 틀(periodPattern/dateOpen)로 되살린다.
- * 요일마다 점심 위치가 다를 수 있으므로, 요일(월~금)별로 각각 구조를 되짚는다. */
-function derivePatternFromDates() {
-  const entries = [...teacherState.dates.values()];
-  if (entries.length === 0) {
-    // 슬롯을 미리 만들어두지 않는다 — 선생님이 "시간표 만들기"를 직접 눌러야
-    // 요일별 시간표가 나타난다(그래야 점심시간 등 직접 고른 설정이 항상 반영된다).
-    if (!teacherState.periodPattern) {
-      teacherState.periodPattern = { preset: null, duration_minutes: 20, periodSlotsByDow: {}, extraSlots: [], lunch: null };
-    }
-    teacherState.dateOpen = {};
-    return;
-  }
 
-  // periodSlotsByDow/extraSlots는 순전히 "교시 시간 구조"만 나타낸다. 실제 열림·방법 상태는 전부
+
+/** 서버에 저장된 날짜들의 시간 구조를 audience(학부모/학생) 하나만 골라 편집용 틀로 되살린다.
+
+ * 요일마다 점심 위치가 다를 수 있으므로, 요일(월~금)별로 각각 구조를 되짚는다. 학생 쪽은
+
+ * period가 "몇 교시 뒤 쉬는시간·점심시간인지"를 나타내므로, 같은 방식으로 요일별 구조를
+
+ * 되짚으면 자연스럽게 쉬는시간 그룹이 된다. */
+
+function deriveAudiencePattern(audience) {
+
+  const defaults = audience === 'student'
+    ? { preset: null, duration_minutes: 10, periodSlotsByDow: {}, extraSlots: [], lunch: null }
+    : { preset: null, duration_minutes: 20, periodSlotsByDow: {}, extraSlots: [], lunch: null };
+
+  const entries = [...teacherState.dates.values()]
+    .map(entry => ({ ...entry, slots: entry.slots.filter(s => s.audience === audience) }))
+    .filter(entry => entry.slots.length > 0);
+
+  // 슬롯을 미리 만들어두지 않는다 — 선생님이 "시간표 만들기"를 직접 눌러야
+
+  // 요일별 시간표가 나타난다(그래야 점심시간 등 직접 고른 설정이 항상 반영된다).
+
+  if (entries.length === 0) return defaults;
+
+
+
+  // periodSlotsByDow/extraSlots는 순전히 "시간 구조"만 나타낸다. 실제 열림·방법 상태는 전부
+
   // dateOpen 쪽 명시적인 값으로만 판단하므로, 여기서는 항상 닫힘을 기본값으로 둔다
+
   // (그렇지 않으면 기준으로 삼은 날짜의 상태가 다른 모든 날짜의 기본값으로 새어나간다).
+
   const base = entries[0];
+
   const cleanSlot = ({ start_time, period, period_range, period_label }) =>
+
     ({ start_time, period, period_range, period_label, is_open: false, mode: 'both' });
 
+
+
   // 같은 요일의 날짜가 여러 개 저장돼 있으면, 그중 가장 먼저 만난 걸 그 요일의 기준 구조로 삼는다.
+
   const byDowEntry = {};
+
   for (const entry of entries) {
+
     const dow = new Date(entry.date + 'T00:00:00').getDay();
+
     if (!byDowEntry[dow]) byDowEntry[dow] = entry;
+
   }
+
+
 
   const extraSlots = base.slots.filter(s => !s.period).map(cleanSlot);
+
   const periodSlotsByDow = {};
+
   const lunchByDow = {};
+
   for (const dow of DOW_KEYS) {
+
     const entry = byDowEntry[dow] || base; // 저장된 날짜가 없는 요일은 일단 전체 기준 구조를 빌려 쓴다
+
     const daySlots = entry.slots.filter(s => s.period).map(cleanSlot);
+
     periodSlotsByDow[dow] = daySlots;
-    lunchByDow[dow] = inferLunchFromSlots(daySlots, entry.duration_minutes ?? base.duration_minutes);
+
+    // 학생 쪽 쉬는시간·점심시간 자리는 학부모 시간표에 딸린 값이라, 여기서 독립적으로
+
+    // 점심 위치를 되짚지 않는다(별도 드래그 UI도 없다 — lunch: null로 둔다).
+
+    lunchByDow[dow] = audience === 'parent'
+      ? inferLunchFromSlots(daySlots, entry.duration_minutes ?? base.duration_minutes)
+      : { enabled: false };
+
   }
+
+
 
   const observedDows = Object.keys(byDowEntry).map(Number);
+
   const refDow = observedDows[0] ?? 1;
-  const perWeekday = observedDows.length > 1 && observedDows.some((dow) => {
+
+  const perWeekday = audience === 'parent' && observedDows.length > 1 && observedDows.some((dow) => {
+
     const a = lunchByDow[dow], b = lunchByDow[refDow];
+
     return a.enabled !== b.enabled || a.afterPeriod !== b.afterPeriod || a.minutes !== b.minutes;
+
   });
 
-  teacherState.periodPattern = {
+
+
+  return {
+
     preset: base.preset,
-    duration_minutes: base.duration_minutes,
+
+    duration_minutes: (audience === 'student' ? base.student_duration_minutes : base.duration_minutes) ?? defaults.duration_minutes,
+
     periodSlotsByDow,
+
     extraSlots,
-    lunch: { perWeekday, shared: lunchByDow[refDow], byDow: lunchByDow },
+
+    lunch: audience === 'parent' ? { perWeekday, shared: lunchByDow[refDow], byDow: lunchByDow } : null,
+
   };
 
-  // dateOpen은 날짜 -> 상담 슬롯(시작 시각)마다 따로 상태를 기억한다. 한 교시 안에 상담이
-  // 2개 들어가면(예: 20분씩 2번) 그 둘을 각각 열고 닫을 수 있어야 하기 때문에, 교시 단위가
-  // 아니라 슬롯의 실제 시작 시각 단위로 저장한다.
-  const dateOpen = {};
-  for (const entry of entries) {
-    dateOpen[entry.date] = {};
-    for (const s of entry.slots) {
-      dateOpen[entry.date][s.start_time] = { is_open: s.is_open, mode: s.mode };
-    }
-  }
-  teacherState.dateOpen = dateOpen;
 }
+
+
+
+/** dateOpen은 날짜 -> 상담 슬롯(시작 시각)마다 따로 상태를 기억한다. 한 교시 안에 상담이
+
+ * 2개 들어가면(예: 20분씩 2번) 그 둘을 각각 열고 닫을 수 있어야 하기 때문에, 교시 단위가
+
+ * 아니라 슬롯의 실제 시작 시각 단위로 저장한다. 학부모·학생 슬롯은 방과후를 빼면 시작
+
+ * 시각이 겹치지 않으므로(방과후는 겹치지 않게 막는다), audience 구분 없이 하나로 둔다. */
+
+function deriveDateOpen() {
+
+  const dateOpen = {};
+
+  for (const entry of teacherState.dates.values()) {
+
+    dateOpen[entry.date] = {};
+
+    for (const s of entry.slots) {
+
+      dateOpen[entry.date][s.start_time] = { is_open: s.is_open, mode: s.mode };
+
+    }
+
+  }
+
+  return dateOpen;
+
+}
+
+
 
 /** 저장된 슬롯 시각만 보고 점심시간이 어디 있었는지 되짚는다(교시 사이 뜬 간격 중
+
  * 가장 크면서, 평범한 쉬는시간(10분)보다 뚜렷하게 긴 곳). DB에는 점심시간을 따로
+
  * 저장하지 않으므로, 새로고침 뒤 점심 줄을 다시 보여주려면 이렇게 역산해야 한다. */
+
 function inferLunchFromSlots(slots, durationMinutes) {
+
   const groups = groupByPeriod(slots).filter(g => g.period);
+
   if (groups.length < 2) return { enabled: false };
+
   let best = null;
+
   for (let i = 0; i < groups.length - 1; i++) {
+
     const cur = groups[i];
+
     const next = groups[i + 1];
+
     const curEnd = hhmmToMinutes(cur.slots[cur.slots.length - 1].start_time.slice(0, 5)) + (durationMinutes || 20);
+
     const nextStart = hhmmToMinutes(next.slots[0].start_time.slice(0, 5));
+
     const gap = nextStart - curEnd;
+
     if (!best || gap > best.gap) best = { gap, afterPeriod: cur.period };
+
   }
+
   if (best && best.gap >= 25) return { enabled: true, afterPeriod: best.afterPeriod, minutes: best.gap };
+
   return { enabled: false };
+
 }
+
+
 
 function defaultDayLunch() { return { enabled: true, afterPeriod: 4, minutes: 50 }; }
+
 function defaultLunchState() {
+
   const byDow = {};
+
   for (const d of DOW_KEYS) byDow[d] = defaultDayLunch();
+
   return { perWeekday: false, shared: defaultDayLunch(), byDow };
+
 }
+
+
 
 /** "요일마다 다르게"가 꺼져 있으면 모든 요일이 공통 설정(shared)을 쓰고, 켜져 있으면
+
  * 요일별로 따로 둔 설정(byDow)을 쓴다. */
+
 function lunchFor(pattern, dow) {
+
   if (!pattern.lunch) return null;
+
   return pattern.lunch.perWeekday ? (pattern.lunch.byDow[dow] || defaultDayLunch()) : pattern.lunch.shared;
+
 }
+
+
 
 /** 이 요일에 실제로 쓰이는 슬롯 전체(교시 슬롯 + 방과후/직접설정 슬롯, 뒤엣것은 요일 공통)를 돌려준다. */
+
 function slotsForDow(pattern, dow) {
+
   return [...(pattern.periodSlotsByDow?.[dow] || []), ...(pattern.extraSlots || [])];
+
 }
+
+
 
 function hasAnyPatternSlots(pattern) {
+
   return DOW_KEYS.some(d => (pattern.periodSlotsByDow?.[d]?.length || 0) > 0) || (pattern.extraSlots?.length || 0) > 0;
+
 }
+
+
 
 function renderTeacherDashboard() {
+
   setView('teacher-dashboard', () => {
+
     const t = teacherState;
+
     $('#main').innerHTML = `
+
       <div class="card">
+
         <div class="teacher-hello">
+
           <div class="teacher-hello-avatar">${escapeHtml(t.teacherName.slice(0, 1))}</div>
+
           <div>
+
             <p class="teacher-hello-greet">${escapeHtml(t.teacherName)} 선생님, 환영합니다</p>
+
             <h2 style="margin:0;">${escapeHtml(t.school)} ${gradeClassLabel(t.grade, t.teacherClass)}</h2>
+
           </div>
+
         </div>
+
         ${t.parentCode ? `
+
           <div class="info-box">
+
             <div style="width:100%;">
+
               학부모 공유 코드: <strong>${t.parentCode}</strong>
+
               <textarea id="shareMsgText" class="share-msg-box" readonly rows="6"></textarea>
+
               <button type="button" class="btn btn-primary btn-block" id="copyShareMsgBtn" style="margin-top:8px;">학부모께 보낼 메시지 복사하기</button>
+
               <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}</span>
+
             </div>
+
           </div>
+
         ` : `
+
           <div class="info-box">
+
             <div>상담 가능 시간을 설정한 뒤 게시하면, 학부모에게 보낼 공유 코드가 만들어져요.</div>
+
           </div>
+
         `}
+
       </div>
+
       <div class="home-choices">
-        <button type="button" class="home-choice" onclick="openAvailabilityEditor()">
-          <span class="txt"><strong>상담 가능 시간 설정</strong><span>날짜, 시간대와 상담 방법을 설정하세요.</span></span>
+
+        <button type="button" class="home-choice" onclick="openAvailabilityEditor('parent')">
+
+          <span class="txt"><strong>학부모 상담 시간 설정</strong><span>날짜, 시간대와 상담 방법을 설정하세요.</span></span>
+
         </button>
+
+        <button type="button" class="home-choice" onclick="openAvailabilityEditor('student')">
+
+          <span class="txt"><strong>학생 상담 시간 설정</strong><span>쉬는시간·점심시간·방과후 중에서 설정하세요.</span></span>
+
+        </button>
+
         <button type="button" class="home-choice" onclick="openBookingsList()">
+
           <span class="txt"><strong>예약 현황</strong><span>신청 내용을 확인하고 예약을 관리하세요.</span></span>
+
         </button>
+
       </div>
+
     `;
+
     if (t.parentCode) {
+
       $('#shareMsgText').value = buildParentShareMessage(t);
+
       $('#copyShareMsgBtn').addEventListener('click', () => {
+
         copyToClipboard($('#shareMsgText').value, '메시지를 복사했어요! 학부모님께 붙여넣기 해주세요');
+
       });
+
     }
+
   });
+
 }
 
+
+
 /** 학부모께 그대로 붙여넣어 보낼 수 있는 안내 메시지(링크 포함)를 만든다. */
+
 function buildParentShareMessage(t) {
+
   const link = `${location.origin}${location.pathname}?code=${t.parentCode}`;
+
   return `안녕하세요, ${t.school} ${plainGradeClass(t.grade, t.teacherClass)} 담임 ${t.teacherName}입니다.
+
+
 
 학부모 상담 신청을 받고 있습니다. 아래 링크에서 편하신 시간을 선택하여 신청해 주시기 바랍니다.
 
+
+
 📌 ${link}
 
+
+
 * 신청 및 취소 모두 위 링크에서 가능합니다.
+
 감사합니다.`;
+
 }
+
+
 
 /** 클립보드로 복사한다(구형 브라우저·비보안 컨텍스트에서는 textarea+execCommand로 대신한다). */
+
 async function copyToClipboard(text, successMsg) {
+
   try {
+
     if (navigator.clipboard && window.isSecureContext) {
+
       await navigator.clipboard.writeText(text);
+
     } else {
+
       const ta = document.createElement('textarea');
+
       ta.value = text;
+
       ta.style.position = 'fixed';
+
       ta.style.opacity = '0';
+
       document.body.appendChild(ta);
+
       ta.select();
+
       document.execCommand('copy');
+
       document.body.removeChild(ta);
+
     }
+
     toast(successMsg || '복사했어요');
+
   } catch (err) {
+
     toast('복사에 실패했어요. 직접 선택해서 복사해주세요.');
+
   }
+
 }
 
-function openAvailabilityEditor() {
+
+
+function openAvailabilityEditor(audience = 'parent') {
+
+  teacherState.editingAudience = audience;
+
   setView('teacher-availability', renderAvailabilityEditor);
+
 }
+
+
 
 function renderAvailabilityEditor() {
+
   const t = teacherState;
+
   const sortedDates = [...t.selectedDates].sort();
+
+  const isStudent = teacherState.editingAudience === 'student';
+
   $('#main').innerHTML = `
+
     <div class="card">
-      <h2>상담 가능 시간 설정</h2>
-      <p class="subtitle">상담할 날짜를 선택해주세요. 아래에서 기본 시간을 정한 뒤, 요일별로 상담 가능한 시간을 설정할 수 있어요.</p>
+
+      <h2>${isStudent ? '학생 상담 시간 설정' : '상담 가능 시간 설정'}</h2>
+
+      <p class="subtitle">${isStudent
+        ? '학생 상담은 교과시간엔 할 수 없어요. 학부모 상담 시간표에 이미 있는 날짜 중에서, 쉬는시간·점심시간·방과후로 상담 시간을 정해요.'
+        : '상담할 날짜를 선택해주세요. 아래에서 기본 시간을 정한 뒤, 요일별로 상담 가능한 시간을 설정할 수 있어요.'}</p>
+
       <div id="rangeCalendar"></div>
+
       <div id="ta-editor"></div>
+
     </div>
+
   `;
-  renderCalendar($('#rangeCalendar'), { onToggleDate: toggleDate, selectedDates: sortedDates });
+
+  renderCalendar($('#rangeCalendar'), {
+
+    onToggleDate: isStudent
+
+      ? () => toast('날짜는 "학부모 상담 시간 설정"에서 골라주세요')
+
+      : toggleDate,
+
+    selectedDates: sortedDates,
+
+  });
+
   renderAvailabilityPatternEditor();
+
 }
+
+
 
 async function toggleDate(dateStr) {
+
   if (teacherState.selectedDates.has(dateStr)) {
+
     const entry = teacherState.dates.get(dateStr);
+
     if (entry?.slots.some(s => s.booking)) {
+
       return toast('이미 예약이 있는 날짜는 뺄 수 없어요. 예약을 먼저 취소해주세요.');
+
     }
+
     try {
+
       await db.deleteScheduleDate(teacherState.pageId, teacherState.adminCode, dateStr);
+
     } catch (err) {
+
       return toast(err.message);
+
     }
+
     teacherState.selectedDates.delete(dateStr);
+
     teacherState.dates.delete(dateStr);
+
   } else {
+
     teacherState.selectedDates.add(dateStr);
+
   }
+
   renderAvailabilityEditor();
+
 }
+
+
 
 /** 폼에 입력된 값대로 요일별 교시 시간 구조(periodSlotsByDow)를 다시 만든다. 점심시간을
+
  * 드래그로 옮길 때도 해당 요일의 "몇 교시 뒤" 값만 바꾼 뒤 이 함수를 다시 불러 재사용한다. */
+
 /** 1단계 폼(기본 형태)의 현재 값을 읽어 pattern에 반영하고, 요일별 슬롯을 처음부터 만든다.
+
  * "시간표 만들기"를 눌러 2단계(요일별 시간표)로 넘어갈 때만 호출한다. */
+
 function readFormIntoPattern() {
+
+  if (teacherState.editingAudience === 'student') {
+
+    const pattern = teacherState.studentPattern;
+
+    const parent = teacherState.periodPattern;
+
+    pattern.duration_minutes = Number($('#studentConsultMinutes')?.value) || pattern.duration_minutes || 10;
+
+    pattern.preset = parent.preset;
+
+    if (parent.preset === 'custom') {
+
+      pattern.periodSlotsByDow = Object.fromEntries(DOW_KEYS.map(d => [d, []]));
+
+      pattern.lunch = null;
+
+      return;
+
+    }
+
+    pattern.lunch = null;
+
+    regeneratePatternSlots();
+
+    return;
+
+  }
+
+
+
   const pattern = teacherState.periodPattern;
+
   const preset = $('#presetSelect').value;
+
   const consultMinutes = Number($('#consultMinutes').value) || 20;
+
   pattern.preset = preset;
+
   pattern.duration_minutes = consultMinutes;
 
+
+
   if (preset === 'custom') {
+
     pattern.periodSlotsByDow = Object.fromEntries(DOW_KEYS.map(d => [d, []]));
+
     pattern.extraSlots = buildCustomSlots({ startTime: $('#customStart').value, endTime: $('#customEnd').value, consultMinutes });
+
     pattern.lunch = null;
+
     return;
+
   }
+
+
 
   pattern.startTime = $('#presetStart').value || '09:00';
+
   pattern.periodCount = Number($('#periodCount').value) || 6;
+
   if (!pattern.lunch) pattern.lunch = defaultLunchState();
+
   regeneratePatternSlots();
+
 }
+
+
 
 /** pattern에 이미 저장된 값(preset·시작시각·교시수·점심 위치)만으로 요일별 슬롯을 다시 만든다.
- * 2단계(요일별 시간표) 화면에서 점심시간을 드래그로 옮길 때처럼, 폼 없이 다시 계산할 때 쓴다. */
+
+ * 2단계(요일별 시간표) 화면에서 점심시간을 드래그로 옮길 때처럼, 폼 없이 다시 계산할 때 쓴다.
+
+ * 학생 쪽은 교시 자체가 아니라 학부모 시간표에 이미 있는 쉬는시간·점심시간만 가져다 쓰므로,
+
+ * periodCount·시작시각·점심 위치를 전부 학부모 pattern(teacherState.periodPattern)에서 그대로 읽는다. */
+
 function regeneratePatternSlots() {
-  const pattern = teacherState.periodPattern;
-  if (pattern.preset === 'custom') return;
-  const startTime = pattern.startTime || '09:00';
-  const periodCount = pattern.periodCount || 6;
-  pattern.periodSlotsByDow = {};
-  for (const d of DOW_KEYS) {
-    const lc = lunchFor(pattern, d);
-    pattern.periodSlotsByDow[d] = buildPresetSlots({
-      preset: pattern.preset, startTime, periodCount, consultMinutes: pattern.duration_minutes,
-      lunchAfterPeriod: lc?.enabled ? lc.afterPeriod : null,
-      lunchMinutes: lc?.minutes || 50,
-    });
+
+  if (teacherState.editingAudience === 'student') {
+
+    const pattern = teacherState.studentPattern;
+
+    const parent = teacherState.periodPattern;
+
+    if (!parent?.preset || parent.preset === 'custom') { pattern.periodSlotsByDow = {}; return; }
+
+    const startTime = parent.startTime || '09:00';
+
+    const periodCount = parent.periodCount || 6;
+
+    pattern.periodSlotsByDow = {};
+
+    for (const d of DOW_KEYS) {
+
+      const lc = lunchFor(parent, d);
+
+      pattern.periodSlotsByDow[d] = buildGapSlots({
+
+        preset: parent.preset, startTime, periodCount, consultMinutes: pattern.duration_minutes,
+
+        lunchAfterPeriod: lc?.enabled ? lc.afterPeriod : null,
+
+        lunchMinutes: lc?.minutes || 50,
+
+      });
+
+    }
+
+    return;
+
   }
+
+
+
+  const pattern = teacherState.periodPattern;
+
+  if (pattern.preset === 'custom') return;
+
+  const startTime = pattern.startTime || '09:00';
+
+  const periodCount = pattern.periodCount || 6;
+
+  pattern.periodSlotsByDow = {};
+
+  for (const d of DOW_KEYS) {
+
+    const lc = lunchFor(pattern, d);
+
+    pattern.periodSlotsByDow[d] = buildPresetSlots({
+
+      preset: pattern.preset, startTime, periodCount, consultMinutes: pattern.duration_minutes,
+
+      lunchAfterPeriod: lc?.enabled ? lc.afterPeriod : null,
+
+      lunchMinutes: lc?.minutes || 50,
+
+    });
+
+  }
+
 }
+
+
 
 /** 점심시간 줄을 다른 교시 사이로 옮긴다(드래그 앤 드롭으로 놓았을 때 호출). dow가 없으면
+
  * "요일마다 다르게"가 꺼져 있는 것이므로 공통 설정을 옮긴다. 1단계/2단계 화면 둘 다에
+
  * 점심시간 폼이 있을 수 있어서, 그 중 실제로 화면에 떠 있는 입력칸만 값을 맞춰준다. */
+
 function moveLunch(dow, newAfterPeriod) {
-  const pattern = teacherState.periodPattern;
+
+  const pattern = activePattern();
+
   if (!pattern.lunch) return;
+
   if (pattern.lunch.perWeekday && dow) {
+
     const lc = pattern.lunch.byDow[dow];
+
     if (!lc?.enabled || lc.afterPeriod === newAfterPeriod) return;
+
     lc.afterPeriod = newAfterPeriod;
+
     for (const prefix of ['', 'wd']) { const input = $(`#${prefix}lunchAfter-${dow}`); if (input) input.value = newAfterPeriod; }
+
   } else {
+
     const lc = pattern.lunch.shared;
+
     if (!lc?.enabled || lc.afterPeriod === newAfterPeriod) return;
+
     lc.afterPeriod = newAfterPeriod;
+
     for (const prefix of ['', 'wd']) { const input = $(`#${prefix}lunchAfter`); if (input) input.value = newAfterPeriod; }
+
   }
+
   regeneratePatternSlots();
+
   renderPatternGrid();
+
   toast(`점심시간을 ${newAfterPeriod}교시 뒤로 옮겼어요`);
+
 }
+
+
 
 /** 점심시간 설정 폼(요일마다 다르게 토글 + 공통/요일별 입력)의 HTML을 만든다. idPrefix로
+
  * 1단계(기본 형태 설정)와 2단계(요일별 시간표)에서 서로 다른 id를 쓰게 해 겹치지 않게 한다. */
+
 function lunchFormHtml(pattern, idPrefix) {
+
   const lunchState = pattern.lunch || defaultLunchState();
+
   const perWeekday = Boolean(lunchState.perWeekday);
+
   const shared = lunchState.shared || defaultDayLunch();
+
   const anyDayEnabled = DOW_KEYS.some(d => lunchState.byDow?.[d]?.enabled);
+
   const masterEnabled = Boolean(shared.enabled) || anyDayEnabled;
+
   const dayRowsHtml = DOW_KEYS.map(d => {
+
     const lc = lunchState.byDow?.[d] || defaultDayLunch();
+
     return `
+
       <div class="tt-lunch-day-row">
+
         <label class="tt-lunch-day-check">
+
           <input type="checkbox" id="${idPrefix}lunchEnable-${d}" ${lc.enabled ? 'checked' : ''}>
+
           <span>${WEEKDAY_LABELS[d]}</span>
+
         </label>
+
         <input type="number" id="${idPrefix}lunchAfter-${d}" min="1" max="10" value="${lc.afterPeriod || shared.afterPeriod || 4}">
+
         <span class="tt-lunch-day-sep">교시 뒤</span>
+
         <input type="number" id="${idPrefix}lunchMinutes-${d}" min="10" max="120" value="${lc.minutes || shared.minutes || 50}">
+
         <span class="tt-lunch-day-sep">분</span>
+
       </div>`;
+
   }).join('');
 
+
+
   return `
+
     <div id="${idPrefix}lunchSection">
+
       <label class="tt-lunch-toggle" for="${idPrefix}lunchEnable">
+
         <input type="checkbox" id="${idPrefix}lunchEnable" ${masterEnabled ? 'checked' : ''}>
+
         <span>점심시간 넣기</span>
+
       </label>
+
       <div id="${idPrefix}lunchBody" style="display:${masterEnabled ? 'block' : 'none'};">
+
         <label class="tt-lunch-perday-toggle" for="${idPrefix}lunchPerWeekday">
+
           <input type="checkbox" id="${idPrefix}lunchPerWeekday" ${perWeekday ? 'checked' : ''}>
+
           <span>요일마다 다르게 설정</span>
+
         </label>
+
         <div class="row" id="${idPrefix}lunchControls" style="display:${perWeekday ? 'none' : 'flex'};">
+
           <div class="field"><label>몇 교시 뒤</label><input type="number" id="${idPrefix}lunchAfter" min="1" max="10" value="${shared.afterPeriod || 4}"></div>
+
           <div class="field"><label>점심시간(분)</label><input type="number" id="${idPrefix}lunchMinutes" min="10" max="120" value="${shared.minutes || 50}"></div>
+
         </div>
+
         <div class="tt-lunch-days" id="${idPrefix}lunchPerDayForm" style="display:${perWeekday ? 'flex' : 'none'};">${dayRowsHtml}</div>
+
       </div>
+
     </div>
+
   `;
+
 }
+
+
 
 /** lunchFormHtml로 그린 폼의 열고 닫는 토글 두 개(점심시간 넣기 / 요일마다 다르게)를 연결한다. */
+
 function wireLunchFormToggles(idPrefix) {
+
   $(`#${idPrefix}lunchEnable`).addEventListener('change', () => {
+
     $(`#${idPrefix}lunchBody`).style.display = $(`#${idPrefix}lunchEnable`).checked ? 'block' : 'none';
+
   });
+
   $(`#${idPrefix}lunchPerWeekday`).addEventListener('change', () => {
+
     const per = $(`#${idPrefix}lunchPerWeekday`).checked;
+
     $(`#${idPrefix}lunchControls`).style.display = per ? 'none' : 'flex';
+
     $(`#${idPrefix}lunchPerDayForm`).style.display = per ? 'flex' : 'none';
+
   });
+
 }
+
+
 
 /** lunchFormHtml로 그린 폼에 지금 입력된 값을 pattern.lunch에 반영한다(요일별 슬롯 재계산은 안 한다). */
+
 function readLunchFormIntoPattern(pattern, idPrefix) {
+
   const lunchOn = $(`#${idPrefix}lunchEnable`).checked;
+
   const perWeekday = lunchOn && Boolean($(`#${idPrefix}lunchPerWeekday`)?.checked);
+
   if (!pattern.lunch) pattern.lunch = defaultLunchState();
+
   pattern.lunch.perWeekday = perWeekday;
 
+
+
   if (!lunchOn) {
+
     pattern.lunch.shared = { ...pattern.lunch.shared, enabled: false };
+
     for (const d of DOW_KEYS) pattern.lunch.byDow[d] = { ...pattern.lunch.byDow[d], enabled: false };
+
   } else if (!perWeekday) {
+
     pattern.lunch.shared = { enabled: true, afterPeriod: Number($(`#${idPrefix}lunchAfter`).value) || 4, minutes: Number($(`#${idPrefix}lunchMinutes`).value) || 50 };
+
   } else {
+
     for (const d of DOW_KEYS) {
+
       pattern.lunch.byDow[d] = {
+
         enabled: $(`#${idPrefix}lunchEnable-${d}`)?.checked || false,
+
         afterPeriod: Number($(`#${idPrefix}lunchAfter-${d}`)?.value) || 4,
+
         minutes: Number($(`#${idPrefix}lunchMinutes-${d}`)?.value) || 50,
+
       };
+
     }
+
   }
+
 }
+
+
 
 const AFTERSCHOOL_FORM_HTML = `
+
   <button type="button" class="btn btn-tonal btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
+
   <div id="afterschoolForm" class="row" style="display:none;margin-bottom:10px;">
+
     <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+
     <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+
     <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
+
   </div>
+
 `;
 
+
+
 /** AFTERSCHOOL_FORM_HTML로 그린 토글·추가 버튼을 연결한다. onAdded는 추가된 뒤 그리드를
+
  * 다시 그려야 하는 화면(2단계)에서만 넘긴다 — 1단계는 아직 그리드가 없어서 안 넘긴다. 열 때
+
  * 점심시간 상세설정 패널이 펼쳐져 있으면 함께 닫아, 한 번에 하나만 열리게 한다. */
+
 function wireAfterschoolForm(onAdded) {
+
   $('#afterschoolToggle').addEventListener('click', () => {
+
     const form = $('#afterschoolForm');
+
     const opening = form.style.display === 'none';
+
     form.style.display = opening ? 'flex' : 'none';
+
     if (opening) { const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none'; }
+
   });
+
   $('#afterAdd').addEventListener('click', () => {
-    const pattern = teacherState.periodPattern;
+
+    const pattern = activePattern();
+
     const startTime = $('#afterStart').value;
+
     const endTime = $('#afterEnd').value;
+
     if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
-    const consultMinutes = pattern.duration_minutes || 20;
+
+    if (afterschoolOverlapsOtherAudience(startTime, endTime)) {
+
+      const other = teacherState.editingAudience === 'student' ? '학부모' : '학생';
+
+      return toast(`이미 ${other} 방과후 상담으로 잡힌 시간이에요`);
+
+    }
+
+    const consultMinutes = pattern.duration_minutes || (teacherState.editingAudience === 'student' ? 10 : 20);
+
     const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
+
     if (!pattern.extraSlots) pattern.extraSlots = [];
+
     const existingStarts = new Set(pattern.extraSlots.map(s => s.start_time));
+
     const toAdd = newSlots.filter(s => !existingStarts.has(s.start_time));
+
     if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
+
     pattern.extraSlots.push(...toAdd);
+
     $('#afterschoolForm').style.display = 'none';
+
     toast(`방과후 상담 ${toAdd.length}개를 추가했어요`);
+
     onAdded?.();
+
   });
+
 }
+
+
+
+/** 방과후 시간대는 학부모용·학생용 중 하나로만 쓴다. 지금 편집 중인 쪽에서 [startTime,endTime)을
+
+ * 추가하려 할 때, 반대쪽에 이미 방과후로 잡아둔 시간과 겹치는지 본다. */
+
+function afterschoolOverlapsOtherAudience(startTime, endTime) {
+
+  const other = teacherState.editingAudience === 'student' ? teacherState.periodPattern : teacherState.studentPattern;
+
+  const otherAfter = (other?.extraSlots || []).filter(s => s.period_label === '방과후');
+
+  if (otherAfter.length === 0) return false;
+
+  const otherDuration = other.duration_minutes || 20;
+
+  const otherStart = otherAfter.reduce((min, s) => (s.start_time < min ? s.start_time : min), otherAfter[0].start_time);
+
+  const otherEnd = otherAfter.reduce((max, s) => {
+
+    const end = addMinutes(s.start_time, otherDuration);
+
+    return end > max ? end : max;
+
+  }, '00:00');
+
+  return startTime < otherEnd && otherStart < endTime;
+
+}
+
+
 
 function renderAvailabilityPatternEditor() {
-  const pattern = teacherState.periodPattern;
+
   const editor = $('#ta-editor');
 
+
+
+  if (teacherState.editingAudience === 'student') {
+
+    const pattern = teacherState.studentPattern;
+
+    const parent = teacherState.periodPattern;
+
+    if (!parent?.preset) {
+
+      editor.innerHTML = `<p class="hint">먼저 "학부모 상담 시간 설정"을 완료해야 학생 상담 시간을 설정할 수 있어요.</p>`;
+
+      return;
+
+    }
+
+    const isParentCustom = parent.preset === 'custom';
+
+    editor.innerHTML = `
+
+      <div class="tt-generator">
+
+        ${isParentCustom ? `<p class="hint" style="margin:0 0 14px;">선생님이 직접 설정한 시간표라 쉬는시간 구분이 없어요. 방과후 상담만 다음 화면에서 추가할 수 있어요.</p>` : `
+
+        <div class="field">
+
+          <label>학생 상담시간(분)</label>
+
+          <input type="number" id="studentConsultMinutes" min="5" max="60" value="${pattern.duration_minutes || 10}">
+
+        </div>
+
+        <p class="hint" style="margin:8px 0 14px;">학생 상담은 교과시간엔 할 수 없어서, 학부모 시간표에 이미 있는 쉬는시간·점심시간 안에서만 만들어요. 방과후 상담은 다음 화면(요일별 시간표)에서 따로 추가할 수 있어요.</p>
+
+        `}
+
+        <button class="btn btn-primary btn-block" id="generateBtn">다음 · 요일별 시간표 만들기</button>
+
+      </div>
+
+    `;
+
+    $('#generateBtn').addEventListener('click', () => {
+
+      if (teacherState.selectedDates.size === 0) return toast('먼저 달력에서 날짜를 골라주세요');
+
+      readFormIntoPattern();
+
+      openWeekdayEditor();
+
+    });
+
+    return;
+
+  }
+
+
+
+  const pattern = teacherState.periodPattern;
+
+
+
   editor.innerHTML = `
+
     <div class="tt-generator">
+
       <div class="field">
+
         <label>기본 형태</label>
+
         <select id="presetSelect">
+
           <option value="elementary">초등학교형 (40분 수업)</option>
+
           <option value="middle">중학교형 (45분 수업)</option>
+
           <option value="high">고등학교형 (50분 수업)</option>
+
           <option value="custom">직접 설정</option>
+
         </select>
+
       </div>
+
       <div class="row" id="presetRange">
+
         <div class="field"><label>시작 시각</label><input type="time" id="presetStart" value="09:00"></div>
+
         <div class="field"><label>교시 수</label><input type="number" id="periodCount" min="1" max="10" value="6"></div>
+
       </div>
+
       <div class="row" id="customRange" style="display:none;">
+
         <div class="field"><label>시작</label><input type="time" id="customStart" value="09:00"></div>
+
         <div class="field"><label>종료</label><input type="time" id="customEnd" value="16:00"></div>
+
       </div>
+
       <div class="field"><label>상담시간(분)</label><input type="number" id="consultMinutes" min="5" max="120" value="${pattern.duration_minutes || 20}"></div>
-      <p class="hint" style="margin:-4px 0 14px;">점심시간은 4교시 뒤 50분으로 자동으로 들어가요. 방과후 상담이나 시간·요일별 설정은 다음 화면(요일별 시간표)에서 바꿀 수 있어요.</p>
+
+      <p class="hint" style="margin:8px 0 14px;">점심시간은 4교시 뒤 50분으로 자동으로 들어가요. 방과후 상담이나 시간·요일별 설정은 다음 화면(요일별 시간표)에서 바꿀 수 있어요.</p>
+
+
 
       <button class="btn btn-primary btn-block" id="generateBtn">다음 · 요일별 시간표 만들기</button>
+
     </div>
+
   `;
+
+
 
   $('#presetSelect').value = pattern.preset || SCHOOL_LEVEL_TO_PRESET[teacherState.schoolLevel] || 'middle';
+
   const syncPresetVisibility = () => {
+
     const custom = $('#presetSelect').value === 'custom';
+
     $('#presetRange').style.display = custom ? 'flex' : 'none';
+
     $('#customRange').style.display = custom ? 'flex' : 'none';
+
   };
+
   syncPresetVisibility();
+
   $('#presetSelect').addEventListener('change', syncPresetVisibility);
 
+
+
   $('#generateBtn').addEventListener('click', () => {
+
     if (teacherState.selectedDates.size === 0) return toast('먼저 달력에서 날짜를 골라주세요');
+
     readFormIntoPattern();
+
     openWeekdayEditor();
+
   });
+
 }
+
+
 
 /** 2단계: 요일별 시간표를 커스텀하는 화면(칸 열기/닫기, 방과후 추가, 점심줄 드래그, 저장). */
+
 function openWeekdayEditor() {
+
   setView('teacher-weekday', renderWeekdayEditor);
+
 }
+
+
 
 function renderWeekdayEditor() {
-  const pattern = teacherState.periodPattern;
+
+  const pattern = activePattern();
+
   const isCustom = pattern.preset === 'custom';
+
+  const isStudent = teacherState.editingAudience === 'student';
+
+  const showLunchPanel = !isCustom && !isStudent;
+
   $('#main').innerHTML = `
+
     <div class="card">
-      <h2>요일별 시간표</h2>
+
+      <h2>${isStudent ? '학생 상담 요일별 시간표' : '요일별 시간표'}</h2>
+
       <p class="subtitle" style="margin-bottom:14px;">칸을 눌러 열고 닫고, 방문·전화 태그를 눌러 방법을 바꿔요. 시각을 더블클릭하면 그 칸만, 교시 이름(✎)을 누르면 그 교시 전체를 한꺼번에 옮길 수 있어요.</p>
 
+
+
       <div class="row" style="margin-bottom:10px;">
-        ${isCustom ? '' : '<button type="button" class="btn btn-tonal-sun" id="lunchSettingsToggle">점심시간 상세설정</button>'}
+
+        ${showLunchPanel ? '<button type="button" class="btn btn-tonal-sun" id="lunchSettingsToggle">점심시간 상세설정</button>' : ''}
+
         <button type="button" class="btn btn-tonal" id="afterschoolToggle">방과후 상담 추가</button>
+
       </div>
-      ${isCustom ? '' : `
+
+      ${showLunchPanel ? `
+
         <div id="lunchSettingsForm" style="display:none;margin-bottom:16px;">
+
           ${lunchFormHtml(pattern, 'wd')}
+
           <button type="button" class="btn btn-secondary btn-block" id="wdLunchApply" style="margin-top:8px;">점심시간 반영하기</button>
+
         </div>
-      `}
+
+      ` : ''}
+
       <div id="afterschoolForm" class="row" style="display:none;margin-bottom:16px;">
+
         <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+
         <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+
         <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
+
       </div>
+
+
 
       <div id="weekdayGrid" style="margin-bottom:16px;"></div>
+
       <button class="btn btn-primary btn-block btn-lg" id="saveDateBtn">고른 날짜에 저장</button>
+
     </div>
+
   `;
 
-  if (!isCustom) {
+
+
+  if (showLunchPanel) {
+
     $('#lunchSettingsToggle').addEventListener('click', () => {
+
       const form = $('#lunchSettingsForm');
+
       const opening = form.style.display === 'none';
+
       form.style.display = opening ? 'block' : 'none';
+
       if (opening) { const afterForm = $('#afterschoolForm'); if (afterForm) afterForm.style.display = 'none'; }
+
     });
+
     wireLunchFormToggles('wd');
+
     $('#wdLunchApply').addEventListener('click', () => {
+
       readLunchFormIntoPattern(pattern, 'wd');
+
       regeneratePatternSlots();
+
       renderPatternGrid();
+
       toast('점심시간을 반영했어요');
+
     });
+
   }
+
+
 
   wireAfterschoolForm(() => renderPatternGrid());
+
   $('#saveDateBtn').addEventListener('click', saveAvailability);
 
+
+
   renderPatternGrid();
+
 }
+
+
 
 /** 이 날짜·이 상담 슬롯(시작 시각)에 실제 예약이 있는지 본다. */
+
 function isDateSlotBooked(date, startTime) {
+
   const entry = teacherState.dates.get(date);
+
   if (!entry) return false;
+
   const slot = entry.slots.find(s => s.start_time === startTime);
+
   return Boolean(slot?.booking);
+
 }
+
+
 
 /** dateOpen에 저장된 값이 있으면 그걸, 없으면 이 슬롯의 기본 상태를 돌려준다. */
+
 function getEffectiveDateState(date, startTime, baseSlot) {
+
   return teacherState.dateOpen[date]?.[startTime] || { is_open: baseSlot.is_open, mode: baseSlot.mode };
+
 }
+
+
 
 function toggleDateOpen(date, startTime, baseSlot) {
+
   if (!teacherState.dateOpen[date]) teacherState.dateOpen[date] = {};
+
   const cur = getEffectiveDateState(date, startTime, baseSlot);
+
   teacherState.dateOpen[date][startTime] = cur.is_open
+
     ? { is_open: false, mode: cur.mode }
+
     : { is_open: true, mode: cur.mode || 'both' };
+
   teacherState.justChangedKey = `${date}|${startTime}`;
+
   renderPatternGrid();
+
 }
+
+
 
 function toggleDateMethod(date, startTime, method, baseSlot) {
+
   if (!teacherState.dateOpen[date]) teacherState.dateOpen[date] = {};
+
   const cur = getEffectiveDateState(date, startTime, baseSlot);
+
   const modes = new Set(cur.mode === 'both' ? ['in_person', 'phone'] : cur.mode ? [cur.mode] : []);
+
   if (modes.has(method)) modes.delete(method); else modes.add(method);
+
   const isOpen = modes.size > 0;
+
   const mode = modes.size === 2 ? 'both' : modes.size === 1 ? [...modes][0] : (cur.mode || 'both');
+
   teacherState.dateOpen[date][startTime] = { is_open: isOpen, mode };
+
   teacherState.justChangedKey = `${date}|${startTime}`;
+
   renderPatternGrid();
+
 }
+
+
 
 function formatMonthDay(dateStr) {
+
   const [, m, d] = dateStr.split('-').map(Number);
+
   return `${m}월 ${d}일`;
+
 }
+
+
 
 /** 날짜가 속한 주의 월요일 날짜를 'YYYY-MM-DD'로 돌려준다(주 단위로 묶는 기준 키). */
+
 function weekKeyOf(dateStr) {
+
   const d = new Date(dateStr + 'T00:00:00');
+
   const monday = new Date(d);
+
   monday.setDate(d.getDate() - (d.getDay() - 1));
+
   return formatLocalDate(monday);
+
 }
+
+
 
 /** 달력에서 고른 날짜들을 주 단위로 묶는다. 예: { '2026-09-07': {1:'2026-09-07', 3:'2026-09-09'} }. */
+
 function groupSelectedByWeek() {
+
   const weeks = new Map();
+
   for (const d of teacherState.selectedDates) {
+
     const wk = weekKeyOf(d);
+
     const wd = new Date(d + 'T00:00:00').getDay();
+
     if (!weeks.has(wk)) weeks.set(wk, {});
+
     weeks.get(wk)[wd] = d;
+
   }
+
   return weeks;
+
 }
+
+
 
 function renderPatternGrid() {
-  const pattern = teacherState.periodPattern;
+
+  const pattern = activePattern();
+
   const container = $('#weekdayGrid');
+
   if (!hasAnyPatternSlots(pattern)) { container.innerHTML = '<p class="hint">먼저 위에서 시간표를 만들어주세요.</p>'; return; }
 
+
+
   const weeks = groupSelectedByWeek();
+
   if (weeks.size === 0) {
+
     container.innerHTML = '<p class="hint">먼저 위 달력에서 날짜를 골라주세요. 고른 날짜가 있는 주만큼 시간표가 늘어나요.</p>';
+
     return;
+
   }
+
+
 
   // 참고용 구조: 교시 개수·소슬롯 개수는 모든 요일이 같고(점심 위치로 "시각"만 달라진다),
+
   // 방과후/직접설정 슬롯은 요일 공통이라 어느 요일을 기준으로 잡아도 같다.
+
   const refDow = DOW_KEYS.find(d => (pattern.periodSlotsByDow?.[d]?.length || 0) > 0) || DOW_KEYS[0];
+
   const groups = groupByPeriod(slotsForDow(pattern, refDow));
+
   const periodNumbers = groups.map(g => g.period).filter(Boolean);
+
   const maxPeriod = periodNumbers.length ? Math.max(...periodNumbers) : 0;
+
   const perWeekday = Boolean(pattern.lunch?.perWeekday);
+
   const lunchBoundaries = new Set();
+
   for (const d of DOW_KEYS) {
+
     const lc = lunchFor(pattern, d);
+
     if (lc?.enabled) lunchBoundaries.add(lc.afterPeriod);
+
   }
+
   const lunchInUse = lunchBoundaries.size > 0; // 점심을 쓰고 있으면 다른 교시 사이에도 옮겨 놓을 자리를 보여준다
 
+
+
   const sortedWeekKeys = [...weeks.keys()].sort();
+
   let html = '';
+
   sortedWeekKeys.forEach((wk, idx) => {
+
     const days = weeks.get(wk);
+
     const friday = new Date(wk + 'T00:00:00');
+
     friday.setDate(friday.getDate() + 4);
+
     const weekRange = `${formatMonthDay(wk)} ~ ${formatMonthDay(formatLocalDate(friday))}`;
 
+
+
     html += `<h4 class="wd-week-title">${idx + 1}주차 (${weekRange})</h4>`;
+
     html += '<div class="wd-grid-wrap"><table class="wd-grid"><thead><tr><th></th>' +
+
       WEEKDAY_LABELS.slice(1).map((label, i) => {
+
         const w = i + 1;
+
         const date = days[w];
+
         return `<th>${label}${date ? `<br><span class="wd-col-date">${formatMonthDay(date)}</span>` : ''}</th>`;
+
       }).join('') + '</tr></thead><tbody>';
 
+
+
     for (const group of groups) {
+
       const groupKey = group.period ?? (group.period_label ?? 'custom');
+
       const headLabel = group.period_label || (group.period ? `${group.period}교시` : '직접 설정');
+
       const start = group.slots[0].start_time.slice(0, 5);
+
       const lastSlot = group.slots[group.slots.length - 1];
+
       const end = addMinutes(lastSlot.start_time.slice(0, 5), pattern.duration_minutes || 20);
+
       const range = group.period_range || `${start}~${end}`;
 
+
+
       // 요일마다 이 교시의 그룹을 미리 찾아둔다(방과후 등 요일-공통 슬롯은 이 group을 그대로 쓴다).
+
       const dayGroups = {};
+
       if (group.period) {
+
         for (let w = 1; w <= 5; w++) {
+
           dayGroups[w] = groupByPeriod(pattern.periodSlotsByDow?.[w] || []).find(g => g.period === group.period) || group;
+
         }
+
       }
+
+
 
       group.slots.forEach((refSlot, subIdx) => {
+
         html += '<tr>';
+
         if (subIdx === 0) {
+
           html += `<th class="wd-row-head" rowspan="${group.slots.length}" data-period-key="${groupKey}">${escapeHtml(headLabel)}<br><span class="wd-row-time">${range}</span><span class="wd-edit-icon">✎</span></th>`;
+
         }
+
         for (let w = 1; w <= 5; w++) {
+
           const date = days[w];
+
           if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+
           const slot = group.period ? (dayGroups[w].slots[subIdx] || refSlot) : refSlot;
+
           const booked = isDateSlotBooked(date, slot.start_time);
+
           const state = getEffectiveDateState(date, slot.start_time, slot);
+
           const cls = ['wd-cell'];
+
           if (booked) cls.push('wd-cell--booked');
+
           else if (state.is_open) cls.push('wd-cell--open');
+
           if (teacherState.justChangedKey === `${date}|${slot.start_time}`) cls.push('wd-cell--pulse');
+
           html += `<td class="${cls.join(' ')}" data-date="${date}" data-start="${slot.start_time}">`;
+
           html += `<div class="wd-cell-time">${slot.start_time.slice(0, 5)}</div>`;
+
           if (booked) {
+
             html += `<span class="wd-cell-label">예약됨</span>`;
+
           } else if (state.is_open) {
+
             const modes = state.mode === 'both' ? ['in_person', 'phone'] : [state.mode];
+
             html += modes.map(m => `<span class="wd-method-tag ${m === 'phone' ? 'm-phone' : 'm-visit'}" data-m="${m}">${m === 'phone' ? '전화' : '방문'}</span>`).join('');
+
           } else {
+
             html += `<span class="wd-cell-label">닫힘</span>`;
+
           }
+
           html += `</td>`;
+
         }
+
         html += '</tr>';
+
       });
+
+
 
       if (group.period && group.period < maxPeriod && lunchInUse) {
+
         if (!perWeekday) {
+
           // 공통 설정이므로 모든 요일이 같은 자리 — 현재 위치엔 통짜 바를, 다른 교시 사이엔
+
           // 옮겨 놓을 수 있는 빈 자리를 보여준다.
+
           const lc = pattern.lunch.shared;
+
           if (group.period === lc.afterPeriod) {
+
             html += `<tr class="wd-lunch-row" data-after-period="${group.period}">
+
               <td colspan="6"><div class="wd-lunch-cell">🍱 점심시간 · ${lc.minutes}분<span class="wd-lunch-handle">⠿ 눌러서 끌기</span></div></td>
+
             </tr>`;
+
           } else {
+
             html += `<tr class="wd-lunch-dropzone" data-after-period="${group.period}"><td colspan="6"><div class="wd-lunch-dropzone-bar"></div></td></tr>`;
+
           }
+
         } else {
+
           // 요일마다 다르므로 칸을 나눠, 그 요일의 점심이 여기 있으면 알약을, 아니면 놓을 자리를 보여준다.
+
           html += `<tr class="wd-lunch-row-multi"><th class="wd-row-head wd-row-head--lunch"><span class="wd-row-time">점심</span></th>`;
+
           for (let w = 1; w <= 5; w++) {
+
             const date = days[w];
+
             if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+
             const lc = lunchFor(pattern, w);
+
             if (lc?.enabled && lc.afterPeriod === group.period) {
+
               html += `<td class="wd-lunch-cell-td"><div class="wd-lunch-cell wd-lunch-cell--mini" data-dow="${w}" data-after-period="${group.period}">${lc.minutes}분<span class="wd-lunch-handle">⠿</span></div></td>`;
+
             } else if (lc?.enabled) {
+
               html += `<td class="wd-lunch-dropzone-td" data-dow="${w}" data-after-period="${group.period}"><div class="wd-lunch-dropzone-bar"></div></td>`;
+
             } else {
+
               html += `<td class="wd-cell wd-cell--empty"></td>`;
+
             }
+
           }
+
           html += '</tr>';
+
         }
+
       }
+
     }
+
     html += '</tbody></table></div>';
+
   });
+
   container.innerHTML = html;
+
   teacherState.justChangedKey = null;
+
   wireLunchDrag(container, perWeekday);
 
+
+
   $$('.wd-cell:not(.wd-cell--booked):not(.wd-cell--empty)', container).forEach(cell => {
+
     const date = cell.dataset.date;
+
     const startTime = cell.dataset.start;
+
     const dow = new Date(date + 'T00:00:00').getDay();
+
     const slot = slotsForDow(pattern, dow).find(s => s.start_time === startTime);
+
     if (!slot) return;
+
     cell.addEventListener('click', (e) => {
+
       const methodTag = e.target.closest('.wd-method-tag');
+
       if (methodTag) {
+
         e.stopPropagation();
+
         toggleDateMethod(date, startTime, methodTag.dataset.m, slot);
+
       } else {
+
         toggleDateOpen(date, startTime, slot);
+
       }
+
     });
+
     const timeEl = cell.querySelector('.wd-cell-time');
+
     timeEl.addEventListener('click', (e) => e.stopPropagation());
+
     timeEl.addEventListener('dblclick', (e) => {
+
       e.stopPropagation();
+
       startEditSlotTime(slot);
+
     });
+
   });
+
+
 
   $$('.wd-row-head[data-period-key]', container).forEach(th => {
+
     const rawKey = th.dataset.periodKey;
+
     const key = /^\d+$/.test(rawKey) ? Number(rawKey) : rawKey;
+
     const group = groups.find(g => (g.period ?? (g.period_label ?? 'custom')) === key);
+
     th.addEventListener('click', () => startEditPeriodTime(group));
+
   });
+
 }
+
+
 
 /** 점심시간 줄(또는 요일별 알약)을 손가락/마우스로 눌러 끌면, 지나가는 자리(드롭존)가
+
  * 밝아지고 놓으면 그 교시 뒤로 옮겨진다. 포인터 이벤트라 마우스·터치 모두에서 동작한다. */
+
 function wireLunchDrag(container, perWeekday) {
+
   if (!perWeekday) {
+
     const lunchRow = $('.wd-lunch-row', container);
+
     if (!lunchRow) return;
+
     const zones = $$('.wd-lunch-dropzone', container);
+
     const handle = $('.wd-lunch-cell', lunchRow);
+
     wirePointerDrag(handle, lunchRow, zones, (zone) => moveLunch(null, Number(zone.dataset.afterPeriod)));
+
     return;
+
   }
+
   $$('.wd-lunch-cell--mini', container).forEach((pill) => {
+
     const dow = pill.dataset.dow;
+
     const cell = pill.closest('td');
+
     const zones = $$(`.wd-lunch-dropzone-td[data-dow="${dow}"]`, container);
+
     wirePointerDrag(pill, cell, zones, (zone) => moveLunch(Number(dow), Number(zone.dataset.afterPeriod)));
+
   });
+
 }
+
+
 
 /** 공용 포인터 드래그: handle을 누른 채 위아래로 끌면, zones 중 세로 위치가 가장 가까운
+
  * 자리가 밝아지고(정확히 그 얇은 칸 위에 있어야 하는 게 아니라 "가장 가까운 자리"를 찾으므로
+
  * 빠르게 끌어도 잘 잡힌다), 놓았을 때 그 자리가 있었다면 onDrop(zone)을 부른다. 포인터
+
  * 이벤트라 마우스·터치 모두에서 동작한다. */
+
 function wirePointerDrag(handle, moveEl, zones, onDrop) {
+
   if (zones.length === 0) return;
+
   const NEAR_PX = 60; // 이보다 멀면(다른 교시로 완전히 벗어났으면) 놓아도 무효
+
   handle.addEventListener('pointerdown', (e) => {
+
     e.preventDefault();
+
     moveEl.classList.add('wd-lunch-row--dragging');
+
     const startY = e.clientY;
+
     const pointerId = e.pointerId;
+
     let activeZone = null;
 
+
+
     // setPointerCapture는 브라우저마다 손을 놓쳐서(캡처한 요소가 아니라 실제 커서 아래
+
     // 요소로 이벤트가 새는 경우가 있다) 대신 document 전체에서 듣는다 — 이러면 커서가
+
     // 무엇 위를 지나가든 항상 이 드래그가 이어진다.
+
     const onMove = (ev) => {
+
       if (ev.pointerId !== pointerId) return;
+
       moveEl.style.transform = `translateY(${ev.clientY - startY}px)`;
+
       let nearest = null, nearestDist = Infinity;
+
       for (const z of zones) {
+
         const r = z.getBoundingClientRect();
+
         const dist = Math.abs(ev.clientY - (r.top + r.height / 2));
+
         if (dist < nearestDist) { nearestDist = dist; nearest = z; }
+
       }
+
       const zone = nearestDist <= NEAR_PX ? nearest : null;
+
       if (zone !== activeZone) {
+
         activeZone?.classList.remove('wd-lunch-dropzone--active');
+
         activeZone = zone;
+
         activeZone?.classList.add('wd-lunch-dropzone--active');
+
       }
+
     };
+
     const onUp = (ev) => {
+
       if (ev.pointerId !== pointerId) return;
+
       moveEl.classList.remove('wd-lunch-row--dragging');
+
       moveEl.style.transform = '';
+
       zones.forEach(z => z.classList.remove('wd-lunch-dropzone--active'));
+
       document.removeEventListener('pointermove', onMove);
+
       document.removeEventListener('pointerup', onUp);
+
       document.removeEventListener('pointercancel', onUp);
+
       if (activeZone) onDrop(activeZone);
+
     };
+
     document.addEventListener('pointermove', onMove);
+
     document.addEventListener('pointerup', onUp);
+
     document.addEventListener('pointercancel', onUp);
+
   });
+
 }
+
+
 
 /** 이 시작 시각을 가진 상담 슬롯이 어느 날짜에서든 이미 예약됐는지 본다(시간은 모든
+
  * 날짜가 공유하므로, 하나라도 예약이 있으면 시간을 못 바꾸게 막아야 한다). */
+
 function isSlotTimeBooked(startTime) {
+
   for (const entry of teacherState.dates.values()) {
+
     if (entry.slots.some(s => s.start_time === startTime && s.booking)) return true;
+
   }
+
   return false;
+
 }
+
+
 
 function hhmmToMinutes(hhmm) {
+
   const [h, m] = hhmm.split(':').map(Number);
+
   return h * 60 + m;
+
 }
+
+
 
 /** "HH:MM" 또는 "HH:MM:SS" 문자열에 분을 더해 같은 형식으로 돌려준다. */
+
 function shiftTimeString(timeStr, deltaMinutes) {
+
   const hasSeconds = timeStr.length > 5;
+
   const shifted = addMinutes(timeStr.slice(0, 5), deltaMinutes);
+
   return hasSeconds ? `${shifted}:00` : shifted;
+
 }
+
+
 
 /** 시간 조정용 모달을 하나 띄운다. 적용을 누르면 onApply(newTime)이 "HH:MM:SS" 형식으로 호출된다. */
+
 function openTimeEditModal({ title, subtitle, currentTime, onApply }) {
+
   const bg = el(`
+
     <div class="modal-bg" id="timeEditBg">
+
       <div class="modal" style="max-width:360px;">
+
         <div class="modal-header">
+
           <h2>${escapeHtml(title)}</h2>
+
           <button type="button" class="modal-close" id="timeEditClose">✕</button>
+
         </div>
+
         ${subtitle ? `<div class="booking-summary">${escapeHtml(subtitle)}</div>` : ''}
+
         <div class="field">
+
           <label>시작 시각</label>
+
           <input type="time" id="timeEditInput" value="${currentTime}">
+
         </div>
+
         <button type="button" class="btn btn-primary btn-block btn-lg" id="timeEditApply">적용하기</button>
+
       </div>
+
     </div>
+
   `);
+
   document.getElementById('modalRoot').appendChild(bg);
+
   bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
+
   $('#timeEditClose', bg).addEventListener('click', closeModal);
+
   const input = $('#timeEditInput', bg);
+
   setTimeout(() => input.focus(), 50);
+
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#timeEditApply', bg).click(); });
+
   $('#timeEditApply', bg).addEventListener('click', () => {
+
     const val = input.value;
+
     closeModal();
+
     if (val) onApply(`${val}:00`);
+
   });
+
 }
+
+
 
 /** 상담 슬롯 하나(예: 20분짜리 한 칸)의 시작 시각만 따로 조정한다. */
+
 function startEditSlotTime(slot) {
+
   if (isSlotTimeBooked(slot.start_time)) return toast('이미 예약이 있는 시간은 바꿀 수 없어요.');
+
   openTimeEditModal({
+
     title: '상담 시작 시각 조정',
+
     subtitle: `지금은 ${slot.start_time.slice(0, 5)}에 시작해요`,
+
     currentTime: slot.start_time.slice(0, 5),
+
     onApply: (newTime) => {
+
       slot.start_time = newTime;
+
       renderPatternGrid();
+
     },
+
   });
+
 }
+
+
 
 /** 교시 하나를 누르면, 그 교시 안의 상담 슬롯 전체(요일마다 다르게 설정했다면 모든 요일의
+
  * 같은 교시가 함께)를 같은 간격을 유지한 채 한꺼번에 밀거나 당길 수 있다. */
+
 function startEditPeriodTime(group) {
-  const pattern = teacherState.periodPattern;
+
+  const pattern = activePattern();
+
   const allSlots = group.period
+
     ? DOW_KEYS.flatMap(d => groupByPeriod(pattern.periodSlotsByDow?.[d] || []).find(g => g.period === group.period)?.slots || [])
+
     : group.slots;
+
   if (allSlots.some(s => isSlotTimeBooked(s.start_time))) {
+
     return toast('이미 예약이 있는 교시는 시간을 바꿀 수 없어요.');
+
   }
+
   const firstSlot = group.slots[0];
+
   const label = group.period_label || (group.period ? `${group.period}교시` : '이 시간대');
+
   openTimeEditModal({
+
     title: `${label} 시간 조정`,
+
     subtitle: group.period
+
       ? '이 교시 안의 모든 요일 상담 슬롯이 같은 간격을 유지한 채 함께 옮겨져요'
+
       : '이 교시 안의 상담 슬롯 전체가 같은 간격을 유지한 채 함께 옮겨져요',
+
     currentTime: firstSlot.start_time.slice(0, 5),
+
     onApply: (newTime) => {
+
       const delta = hhmmToMinutes(newTime.slice(0, 5)) - hhmmToMinutes(firstSlot.start_time.slice(0, 5));
+
       if (delta !== 0) {
+
         allSlots.forEach(s => { s.start_time = shiftTimeString(s.start_time, delta); });
+
         if (firstSlot.period_range) {
+
           const [rs, re] = firstSlot.period_range.split('~');
+
           const newRange = `${addMinutes(rs, delta)}~${addMinutes(re, delta)}`;
+
           allSlots.forEach(s => { s.period_range = newRange; });
+
         }
+
       }
+
       renderPatternGrid();
+
     },
+
   });
+
 }
+
+
 
 async function saveAvailability() {
-  const pattern = teacherState.periodPattern;
+
+  const pattern = activePattern();
+
   const selected = [...teacherState.selectedDates];
+
   if (selected.length === 0) return toast('먼저 달력에서 날짜를 골라주세요');
+
   if (!hasAnyPatternSlots(pattern)) return toast('먼저 시간표 만들기를 눌러주세요');
+
   try {
+
     for (const d of selected) {
+
       const dow = new Date(d + 'T00:00:00').getDay();
+
       const slotsForDate = slotsForDow(pattern, dow).map((slot) => {
+
         const state = getEffectiveDateState(d, slot.start_time, slot);
+
         const { start_time, period, period_range, period_label } = slot;
+
         return { start_time, period, period_range, period_label, is_open: state.is_open, mode: state.mode };
+
       });
-      await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, pattern.preset, pattern.duration_minutes, slotsForDate);
+
+      await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, d, pattern.preset, pattern.duration_minutes, slotsForDate, teacherState.editingAudience);
+
     }
+
     await loadTeacherSchedule();
+
     goTeacherDashboard();
+
     toast(`${selected.length}개 날짜에 저장했어요`);
+
     await maybePublish();
+
   } catch (err) {
+
     toast(err.message);
+
   }
+
 }
+
+
 
 async function maybePublish() {
+
   if (teacherState.parentCode) return;
+
   try {
+
     const code = await db.publishPage(teacherState.pageId, teacherState.adminCode);
+
     teacherState.parentCode = code;
+
     toast(`학부모 공유 코드가 만들어졌어요: ${code}`);
+
   } catch (err) { /* 다음 저장 때 다시 시도 */ }
+
 }
+
+
 
 function openBookingsList() {
+
   setView('teacher-bookings', () => {
+
     $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>예약 현황 로드 중...</div>`;
+
     loadTeacherSchedule().then(renderBookingsList).catch(err => {
+
       $('#main').innerHTML = `<div class="card"><p>${escapeHtml(err.message)}</p></div>`;
+
     });
+
   });
+
 }
+
+
 
 function renderBookingsList() {
+
   const today = formatLocalDate(new Date());
+
   const bookings = [];
+
   for (const [date, entry] of teacherState.dates) {
+
     for (const s of entry.slots) {
+
       if (s.booking) bookings.push({ date, slot_id: s.slot_id, start_time: s.start_time, ...s.booking });
+
     }
+
   }
+
   bookings.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.start_time.localeCompare(b.start_time)));
+
   const upcoming = bookings.filter(b => b.date >= today);
+
   const past = bookings.filter(b => b.date < today);
 
+
+
   const renderOne = b => `
+
     <div class="booking-item">
+
       <div class="booking-item-head">
+
         <div>
+
           <div class="booking-item-title">${escapeHtml(b.student_number)}번 ${escapeHtml(b.student_name)}</div>
+
           <div class="booking-item-time">${b.date} · ${b.start_time}</div>
+
         </div>
+
         <button class="btn btn-danger" style="padding:6px 10px;font-size:12px;" data-slot="${b.slot_id}" data-name="${escapeHtml(b.student_name)}">취소</button>
+
       </div>
+
       <div class="booking-item-meta"><strong>학부모</strong> ${escapeHtml(b.parent_name)} · ${escapeHtml(b.parent_phone)}</div>
+
       <div>${b.mode === 'phone' ? '<span class="tag method-phone">전화</span>' : '<span class="tag method-visit">방문</span>'}${(b.topics || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
+
       ${b.notes ? `<div style="background:var(--disabled);padding:10px;border-radius:8px;font-size:13px;margin-top:6px;white-space:pre-wrap;">${escapeHtml(b.notes)}</div>` : ''}
+
     </div>
+
   `;
+
+
 
   $('#main').innerHTML = `
+
     <div class="stat-row">
+
       <div class="stat-card stat-coral"><div class="stat-icon">⏰</div><div class="num">${upcoming.length}</div><div class="label">다가오는 예약</div></div>
+
       <div class="stat-card stat-mint"><div class="stat-icon">📅</div><div class="num">${bookings.length}</div><div class="label">전체 예약</div></div>
+
     </div>
+
     <div class="card">
+
       <h2>예약 현황</h2>
+
       <h3 style="margin-top:10px;">다가오는 예약</h3>
+
       ${upcoming.length === 0 ? '<div class="empty-state" style="padding:24px;"><p>예약된 상담이 없습니다</p></div>' : upcoming.map(renderOne).join('')}
+
       ${past.length > 0 ? `<h3 style="margin-top:22px;color:var(--text-muted);">지난 예약 (${past.length})</h3>${past.map(renderOne).join('')}` : ''}
+
     </div>
+
   `;
+
   $$('#main button[data-slot]').forEach(btn => {
+
     btn.addEventListener('click', () => {
+
       armConfirm(btn, '정말 취소?', () => doTeacherCancelBk(btn.dataset.slot, btn.dataset.name));
+
     });
+
   });
+
 }
+
+
 
 async function doTeacherCancelBk(slotId, studentName) {
+
   try {
+
     await db.teacherCancelBooking(teacherState.pageId, teacherState.adminCode, slotId);
+
     await loadTeacherSchedule();
+
     toast(`${studentName} 학생의 예약을 취소했어요`);
+
     renderBookingsList();
+
   } catch (err) { toast(err.message); }
+
 }
 
+
+
 /*****************************************************
+
  * 초기화
+
  *****************************************************/
+
 window.goHome = goHome;
+
 window.goBack = goBack;
+
 window.startParent = startParent;
+
 window.startTeacher = startTeacher;
+
 window.openAvailabilityEditor = openAvailabilityEditor;
+
 window.openBookingsList = openBookingsList;
 
+
+
 (function init() {
+
   const params = new URLSearchParams(location.search);
+
   const code = params.get('code');
+
   if (code) {
+
     $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>시간표 로드 중...</div>`;
+
     loadParentSchedule(code).then(renderParentTimetableView).catch(err => {
+
       toast(err.message);
+
       renderHome();
+
     });
+
   } else {
+
     renderHome();
+
   }
+
 })();
+
 </script>
+
 </body>
+
 </html>
+

@@ -29,15 +29,15 @@ export const db = {
     rpc('teacher_login', { p_name: name, p_admin_code: adminCode }),
   getTeacherSchedule: (pageId, adminCode) =>
     rpc('get_teacher_schedule', { p_page_id: pageId, p_admin_code: adminCode }),
-  saveDateSlots: (pageId, adminCode, date, preset, durationMinutes, slots) =>
+  saveDateSlots: (pageId, adminCode, date, preset, durationMinutes, slots, audience = 'parent') =>
     rpc('save_date_slots', {
       p_page_id: pageId, p_admin_code: adminCode, p_date: date,
-      p_preset: preset, p_duration_minutes: durationMinutes, p_slots: slots,
+      p_preset: preset, p_duration_minutes: durationMinutes, p_slots: slots, p_audience: audience,
     }),
   publishPage: (pageId, adminCode) =>
     rpc('publish_page', { p_page_id: pageId, p_admin_code: adminCode }),
-  getPublicSchedule: (parentCode) =>
-    rpc('get_public_schedule', { p_parent_code: parentCode }),
+  getPublicSchedule: (parentCode, audience = 'parent') =>
+    rpc('get_public_schedule', { p_parent_code: parentCode, p_audience: audience }),
   bookSlot: (parentCode, slotId, studentNumber, studentName, className, parentName, parentPhone, topics, notes, mode) =>
     rpc('book_slot', {
       p_parent_code: parentCode, p_slot_id: slotId,

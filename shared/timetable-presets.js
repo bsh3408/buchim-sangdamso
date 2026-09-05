@@ -70,6 +70,39 @@ export function buildCustomSlots({ startTime, endTime, consultMinutes }) {
   return sliceIntoSlots(toMinutes(startTime), toMinutes(endTime), consultMinutes);
 }
 
+// 학생 상담은 교과시간(교시)을 쓸 수 없어서, buildPresetSlots가 여백으로 건너뛰는
+// 쉬는시간·점심시간 구간에서만 슬롯을 만든다. 마지막 교시 뒤 쉬는시간은 방과후와
+// 겹치는 시간대라 여기서 만들지 않는다(방과후는 별도 buildAfterschoolSlots로 정한다).
+export function buildGapSlots({
+  preset,
+  startTime = '09:00',
+  periodCount = 6,
+  breakMinutes = 10,
+  consultMinutes = 10,
+  lunchAfterPeriod = null,
+  lunchMinutes = 50,
+}) {
+  const classMinutes = PRESET_CLASS_MINUTES[preset];
+  if (!classMinutes) {
+    throw new Error(`알 수 없는 프리셋: ${preset}`);
+  }
+  let cursor = toMinutes(startTime);
+  const slots = [];
+  for (let period = 1; period <= periodCount; period++) {
+    cursor += classMinutes;
+    const isLunch = period === lunchAfterPeriod;
+    const gapMinutes = isLunch ? lunchMinutes : breakMinutes;
+    if (isLunch || period < periodCount) {
+      const label = isLunch ? '점심시간' : `쉬는시간(${period}교시~${period + 1}교시)`;
+      const gapRange = `${toTimeString(cursor)}~${toTimeString(cursor + gapMinutes)}`;
+      slots.push(...sliceIntoSlots(cursor, cursor + gapMinutes, consultMinutes)
+        .map(s => ({ ...s, period, period_range: gapRange, period_label: label })));
+    }
+    cursor += gapMinutes;
+  }
+  return slots;
+}
+
 export function buildAfterschoolSlots({ startTime, endTime, consultMinutes }) {
   return sliceIntoSlots(toMinutes(startTime), toMinutes(endTime), consultMinutes)
     .map(s => ({ ...s, period_label: '방과후' }));
