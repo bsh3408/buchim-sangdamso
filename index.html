@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#f7f8f5" />
+<meta name="description" content="우리지금만나에서 선생님과의 상담 시간을 예약하세요. 교사는 상담 시간표와 예약 현황을 한곳에서 관리할 수 있습니다." />
 <title>우리지금만나</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
 <link rel="stylesheet" href="./shared/chalkboard.css" />
@@ -10,13 +12,14 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo" onclick="goHome()"><img src="./images/highfive-icon.png" alt="" class="logo-icon">우리지금만나</div>
+    <button type="button" class="logo" onclick="goHome()" aria-label="우리지금만나 홈"><span class="logo-mark"><img src="./images/highfive-icon.png" alt="" class="logo-icon"></span>우리지금만나</button>
     <div class="header-actions">
       <button class="back-btn" id="backBtn" onclick="goBack()" style="display:none;">&larr; 뒤로</button>
-      <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">선생님이신가요</button>
+      <button class="teacher-btn" id="teacherBtn" onclick="startTeacher()">교사 공간 <span aria-hidden="true">↗</span></button>
     </div>
   </header>
   <main id="main"></main>
+  <footer class="site-footer"><span>우리지금만나</span><span>선생님과 학부모를 잇는 상담 예약</span></footer>
 </div>
 <div id="modalRoot"></div>
 
@@ -156,25 +159,27 @@ function goTeacherDashboard() {
 function renderHome() {
   setView('home', () => {
     $('#main').innerHTML = `
-      <div class="home-title">
-        <span class="home-badge">상담예약도우미</span>
-        <h1><img src="./images/highfive-icon.png" alt="" class="home-title-icon">우리지금만나</h1>
-        <p>선생님과 만날 시간, 우리끼리 편하게 정해요</p>
-      </div>
-      <div class="home-choices">
-        <div class="home-choice home-choice--illust" onclick="startParent()">
-          <div class="txt">
-            <strong>상담 예약하기</strong>
-            <span>선생님이 알려주신 코드로 예약해요</span>
-          </div>
+      <section class="home-screen" aria-labelledby="home-heading">
+        <div class="home-intro">
+          <p class="eyebrow">학교와 가정 사이, 더 가까이</p>
+          <h1 id="home-heading">함께 이야기할 시간,<br>여기서 정해요.</h1>
+          <p class="home-description">아이에 대한 이야기에 집중할 수 있도록.<br>선생님과의 상담 약속을 편하게 잡아보세요.</p>
+          <div class="home-signature"><img src="./images/highfive-icon.png" alt="" width="28" height="28"><span>우리 아이를 위한, 우리만의 시간</span></div>
         </div>
-        <div class="home-choice home-choice--illust" onclick="startTeacher()">
-          <div class="txt">
-            <strong>선생님이신가요</strong>
-            <span>로그인하고 상담 시간표를 관리해요</span>
-          </div>
+        <div class="home-actions">
+          <button type="button" class="reservation-entry" onclick="startParent()">
+            <span class="entry-top"><span class="entry-audience">학부모</span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M7.5 3v4m9-4v4M3.5 10h17m-13 4h3m3 0h3m-9 3h3"/></svg></span>
+            <span class="entry-title">상담 예약하기</span>
+            <span class="entry-description">선생님께 받은 코드로<br>상담 가능한 날짜와 시간을 확인하세요.</span>
+            <span class="entry-bottom"><span>예약 시작하기</span><span class="entry-arrow" aria-hidden="true">→</span></span>
+          </button>
+          <button type="button" class="teacher-entry" onclick="startTeacher()">
+            <span class="txt"><span class="entry-audience">선생님</span><strong>상담 시간표 관리</strong><span>가능한 시간을 설정하고 예약을 확인하세요.</span></span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <p class="entry-note">예약 코드와 링크는 담임 선생님께 안내받을 수 있어요.</p>
         </div>
-      </div>
+      </section>
     `;
   }, true);
 }
@@ -187,13 +192,16 @@ let parentState = { parentCode: null, pageData: null, selectedDate: null };
 function startParent() {
   setView('parent-enter', () => {
     $('#main').innerHTML = `
-      <div class="card">
-        <h2>선생님이 알려주신 코드를 입력해주세요</h2>
-        <div class="field">
-          <input type="text" id="pc-code" maxlength="10" placeholder="예: A3F9K2"
-                 style="text-align:center; letter-spacing:2px; text-transform:uppercase; font-size:16px;">
+      <div class="card entry-card">
+        <p class="eyebrow">학부모 상담 예약</p>
+        <h1>예약 코드를 입력해주세요</h1>
+        <p class="subtitle">선생님께 받은 코드로 우리 반 상담 시간표를 확인해요.</p>
+        <div class="field code-field">
+          <label for="pc-code">예약 코드</label>
+          <input type="text" id="pc-code" maxlength="10" placeholder="예: A3F9K2" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="code-help">
         </div>
         <button class="btn btn-primary btn-block" id="pc-submit">신청하러 가기</button>
+        <p class="form-note" id="code-help">코드를 받지 못하셨다면 담임 선생님께 문의해주세요.</p>
       </div>
     `;
     $('#pc-code').focus();
@@ -230,7 +238,7 @@ function renderParentTimetableView() {
     $('#main').innerHTML = `
       <div class="card">
         <h2>${gradeClassLabel(data.grade, data.teacher_class)} · ${escapeHtml(data.teacher_name)} 선생님</h2>
-        <p class="subtitle">상담 신청 시간표예요</p>
+        <p class="subtitle">상담할 날짜를 고른 뒤, 예약 가능한 시간을 선택해주세요.</p>
 
         ${data.dates.length === 0 ? '<div class="empty-state"><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
           <div id="pt-calendar" style="margin-bottom:16px;"></div>
@@ -518,17 +526,21 @@ let teacherState = {
 function startTeacher() {
   setView('teacher-choice', () => {
     $('#main').innerHTML = `
-      <div class="home-title">
-        <h1 style="font-size:20px;">선생님이신가요?</h1>
-      </div>
-      <div class="home-choices">
-        <div class="home-choice" id="tc-login">
-          <div class="txt"><strong>로그인</strong><span>이미 등록했어요</span></div>
+      <section class="teacher-welcome">
+        <div class="section-heading">
+          <p class="eyebrow">교사 공간</p>
+          <h1>상담 준비를 한곳에서.</h1>
+          <p class="subtitle">우리 반 상담 시간을 설정하고, 신청 내용을 확인하세요.</p>
         </div>
-        <div class="home-choice" id="tc-register">
-          <div class="txt"><strong>아이디 등록</strong><span>처음 사용해요</span></div>
+        <div class="home-choices">
+          <button type="button" class="home-choice" id="tc-login">
+            <span class="txt"><strong>로그인</strong><span>등록한 이름과 관리 코드로 시작하세요.</span></span>
+          </button>
+          <button type="button" class="home-choice" id="tc-register">
+            <span class="txt"><strong>처음 이용하시나요?</strong><span>교사 정보를 등록하고 상담 시간표를 만드세요.</span></span>
+          </button>
         </div>
-      </div>
+      </section>
     `;
     $('#tc-login').addEventListener('click', startTeacherLogin);
     $('#tc-register').addEventListener('click', startTeacherRegister);
@@ -538,11 +550,12 @@ function startTeacher() {
 function startTeacherLogin() {
   setView('teacher-login', () => {
     $('#main').innerHTML = `
-      <div class="card">
-        <h2>로그인</h2>
-        <p class="subtitle">등록할 때 입력한 이름과 코드를 입력해주세요.</p>
-        <div class="field"><label>이름</label><input type="text" id="tl-name" placeholder="예: 김민준"></div>
-        <div class="field"><label>코드</label><input type="password" id="tl-code" placeholder="등록할 때 정한 코드"></div>
+      <div class="card entry-card">
+        <p class="eyebrow">교사 공간</p>
+        <h1>다시 만나 반가워요</h1>
+        <p class="subtitle">등록한 이름과 관리 코드로 로그인해주세요.</p>
+        <div class="field"><label for="tl-name">이름</label><input type="text" id="tl-name" autocomplete="username" placeholder="예: 김민준"></div>
+        <div class="field"><label for="tl-code">관리 코드</label><input type="password" id="tl-code" autocomplete="current-password" placeholder="등록할 때 정한 코드"></div>
         <button class="btn btn-primary btn-block" id="tl-submit">로그인</button>
       </div>
     `;
@@ -578,16 +591,18 @@ async function doTeacherLogin() {
 function startTeacherRegister() {
   setView('teacher-register', () => {
     $('#main').innerHTML = `
-      <div class="card">
-        <h2>아이디 등록</h2>
+      <div class="card entry-card register-card">
+        <p class="eyebrow">교사 공간</p>
+        <h1>우리 반 상담을 시작해요</h1>
+        <p class="subtitle">선생님과 학급 정보를 등록해주세요.</p>
         <div class="info-box">
-          <div>코드는 나중에 로그인할 때 필요해요. 꼭 기억해두세요!</div>
+          <div>관리 코드는 로그인할 때 필요해요. 기억할 수 있는 코드로 설정해주세요.</div>
         </div>
-        <div class="field"><label>이름</label><input type="text" id="tr-name" placeholder="예: 김민준"></div>
-        <div class="field"><label>코드 (4자리 이상)</label><input type="password" id="tr-code" placeholder="나만 아는 코드"></div>
+        <div class="field"><label for="tr-name">이름</label><input type="text" id="tr-name" placeholder="예: 김민준"></div>
+        <div class="field"><label for="tr-code">관리 코드 (4자리 이상)</label><input type="password" id="tr-code" placeholder="나만 아는 코드"></div>
         <div class="field">
-          <label>학교</label>
-          <div class="row">
+          <label for="tr-school">학교</label>
+          <div class="row school-row">
             <input type="text" id="tr-school" placeholder="예: 신장" style="flex:2;">
             <div class="choice-group" id="tr-level-group" style="flex:3;">
               <div class="choice" data-level="elementary">초등학교</div>
@@ -597,8 +612,8 @@ function startTeacherRegister() {
           </div>
         </div>
         <div class="row">
-          <div class="field"><label>학년</label><input type="number" id="tr-grade" min="1" max="6" placeholder="예: 2"></div>
-          <div class="field"><label>반</label><input type="number" id="tr-class" min="1" max="20" placeholder="예: 3"></div>
+          <div class="field"><label for="tr-grade">학년</label><input type="number" id="tr-grade" min="1" max="6" placeholder="예: 2"></div>
+          <div class="field"><label for="tr-class">반</label><input type="number" id="tr-class" min="1" max="20" placeholder="예: 3"></div>
         </div>
         <button class="btn btn-primary btn-block" id="tr-submit">등록하기</button>
       </div>
@@ -792,12 +807,12 @@ function renderTeacherDashboard() {
         `}
       </div>
       <div class="home-choices">
-        <div class="home-choice" onclick="openAvailabilityEditor()">
-          <div class="txt"><strong>상담 가능 시간 설정</strong><span>기간 만들기 · 시간대 · 상담 방법 설정</span></div>
-        </div>
-        <div class="home-choice" onclick="openBookingsList()">
-          <div class="txt"><strong>예약 현황</strong><span>학부모 예약 내용 확인 · 취소</span></div>
-        </div>
+        <button type="button" class="home-choice" onclick="openAvailabilityEditor()">
+          <span class="txt"><strong>상담 가능 시간 설정</strong><span>날짜, 시간대와 상담 방법을 설정하세요.</span></span>
+        </button>
+        <button type="button" class="home-choice" onclick="openBookingsList()">
+          <span class="txt"><strong>예약 현황</strong><span>신청 내용을 확인하고 예약을 관리하세요.</span></span>
+        </button>
       </div>
     `;
     if (t.parentCode) {
@@ -853,7 +868,7 @@ function renderAvailabilityEditor() {
   $('#main').innerHTML = `
     <div class="card">
       <h2>상담 가능 시간 설정</h2>
-      <p class="subtitle">달력에서 날짜를 눌러 추가하고, 다시 누르면 빼요. 교시 시간은 아래에서 한 번만 정하고, 요일별로 열고 닫는 건 시간표에서 따로 정해요.</p>
+      <p class="subtitle">상담할 날짜를 선택해주세요. 아래에서 기본 시간을 정한 뒤, 요일별로 상담 가능한 시간을 설정할 수 있어요.</p>
       <div id="rangeCalendar"></div>
       <div id="ta-editor"></div>
     </div>
