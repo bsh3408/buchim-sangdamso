@@ -1308,7 +1308,9 @@ h1{font-size:34px}h2{font-size:29px}h3{font-size:23px}
 
 .noticeboard-arrow{display:grid;place-items:center;flex-shrink:0;width:32px;height:32px;border-radius:50%;background:#fffdf7;color:#9b4b35;font-size:20px}
 
-.noticeboard-student{background:#e8eddd;cursor:default}
+.noticeboard-student{background:#e8eddd}
+
+.noticeboard-student:hover{background:#dbe4ca}
 
 .noticeboard-soon{flex-shrink:0;font:11px Pretendard,sans-serif;color:#596947;border:1px solid #bdc8ab;border-radius:4px;padding:5px 7px}
 

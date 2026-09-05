@@ -286,7 +286,7 @@ function goHome() {
 
   currentView = null;
 
-  parentState = { parentCode: null, pageData: null, selectedDate: null };
+  parentState = { audience: 'parent', parentCode: null, pageData: null, selectedDate: null };
 
   renderHome();
 
@@ -344,11 +344,11 @@ function renderHome() {
 
             </button>
 
-            <button type="button" class="noticeboard-entry noticeboard-student" disabled aria-describedby="student-coming-soon">
+            <button type="button" class="noticeboard-entry noticeboard-student" onclick="startStudent()">
 
-              <span><strong>학생 상담</strong><small id="student-coming-soon">학생이 직접 예약하는 기능을 준비하고 있어요</small></span>
+              <span><strong>학생 상담</strong><small>쉬는시간·점심시간·방과후 중에 이야기해요</small></span>
 
-              <span class="noticeboard-soon">준비 중</span>
+              <span class="noticeboard-arrow" aria-hidden="true">→</span>
 
             </button>
 
@@ -380,11 +380,21 @@ function renderHome() {
 
  *****************************************************/
 
-let parentState = { parentCode: null, pageData: null, selectedDate: null };
+let parentState = { audience: 'parent', parentCode: null, pageData: null, selectedDate: null };
 
 
 
-function startParent() {
+function startParent() { enterBookingFlow('parent'); }
+
+function startStudent() { enterBookingFlow('student'); }
+
+/** 학부모/학생 두 플로우가 화면 구성은 똑같고 문구·예약 폼만 다르므로, 진입 화면부터
+ * parentState.audience 하나로 갈라 같은 코드를 함께 쓴다. */
+function enterBookingFlow(audience) {
+
+  parentState.audience = audience;
+
+  const isStudent = audience === 'student';
 
   setView('parent-enter', () => {
 
@@ -392,7 +402,7 @@ function startParent() {
 
       <div class="card entry-card">
 
-        <p class="eyebrow">학부모 상담 예약</p>
+        <p class="eyebrow">${isStudent ? '학생 상담 예약' : '학부모 상담 예약'}</p>
 
         <h1>예약 코드를 입력해주세요</h1>
 
@@ -456,7 +466,7 @@ async function submitParentCode() {
 
 async function loadParentSchedule(parentCode) {
 
-  const data = await db.getPublicSchedule(parentCode);
+  const data = await db.getPublicSchedule(parentCode, parentState.audience);
 
   parentState.parentCode = parentCode;
 
@@ -464,7 +474,9 @@ async function loadParentSchedule(parentCode) {
 
   parentState.selectedDate = data.dates[0]?.date ?? null;
 
-  history.replaceState(null, '', `${location.pathname}?code=${encodeURIComponent(parentCode)}`);
+  const forParam = parentState.audience === 'student' ? '&for=student' : '';
+
+  history.replaceState(null, '', `${location.pathname}?code=${encodeURIComponent(parentCode)}${forParam}`);
 
 }
 
@@ -652,6 +664,9 @@ function openBookingModal(slot, dateEntry) {
 
         </div>
 
+        ${parentState.audience === 'student' ? `
+          <div class="hint" style="margin-bottom:14px;">취소할 때는 위 학생 번호로 본인 확인을 해요.</div>
+        ` : `
         <div class="row">
 
           <div class="field">
@@ -673,6 +688,7 @@ function openBookingModal(slot, dateEntry) {
         </div>
 
         <div class="hint" style="margin-bottom:14px;">취소할 때는 여기 입력한 학부모 연락처로 본인 확인을 해요. 꼭 정확히 입력해주세요.</div>
+        `}
 
         <div class="field">
 
@@ -752,13 +768,15 @@ function openBookingModal(slot, dateEntry) {
 
 function submitBooking(slot, dateEntry, bg) {
 
+  const isStudent = parentState.audience === 'student';
+
   const num = $('#bk-num', bg).value.trim();
 
   const sname = $('#bk-sname', bg).value.trim();
 
-  const pname = $('#bk-pname', bg).value.trim();
+  const pname = isStudent ? '' : $('#bk-pname', bg).value.trim();
 
-  const pphone = $('#bk-pphone', bg).value.trim();
+  const pphone = isStudent ? '' : $('#bk-pphone', bg).value.trim();
 
   const methodEl = $('#method-group .choice.selected', bg);
 
@@ -774,9 +792,9 @@ function submitBooking(slot, dateEntry, bg) {
 
   if (!sname) return toast('학생 이름을 입력해주세요');
 
-  if (!pname) return toast('학부모 성함을 입력해주세요');
+  if (!isStudent && !pname) return toast('학부모 성함을 입력해주세요');
 
-  if (!pphone) return toast('학부모 연락처를 입력해주세요');
+  if (!isStudent && !pphone) return toast('학부모 연락처를 입력해주세요');
 
   if (!method) return toast('상담 방법을 선택해주세요');
 
@@ -872,7 +890,7 @@ function showBookingSuccess(slot, dateEntry, studentName, method) {
 
         <div class="info-box">
 
-          <div>예약을 취소하려면, 시간표에서 본인이 예약한 포스트잇 칸을 다시 눌러 <strong>예약할 때 입력한 학부모 연락처</strong>를 입력하시면 됩니다.</div>
+          <div>예약을 취소하려면, 시간표에서 본인이 예약한 포스트잇 칸을 다시 눌러 <strong>${parentState.audience === 'student' ? '학생 번호' : '예약할 때 입력한 학부모 연락처'}</strong>를 입력하시면 됩니다.</div>
 
         </div>
 
@@ -928,15 +946,15 @@ function openCancelModal(slot, dateEntry, slotEl) {
 
         <div class="info-box danger">
 
-          <div>본인이 예약한 내용이 맞다면, 예약할 때 입력한 <strong>학부모 연락처</strong>를 입력하고 취소해주세요.</div>
+          <div>본인이 예약한 내용이 맞다면, <strong>${parentState.audience === 'student' ? '학생 번호' : '예약할 때 입력한 학부모 연락처'}</strong>를 입력하고 취소해주세요.</div>
 
         </div>
 
         <div class="field">
 
-          <label>학부모 연락처 <span class="req">*</span></label>
+          <label>${parentState.audience === 'student' ? '학생 번호' : '학부모 연락처'} <span class="req">*</span></label>
 
-          <input type="tel" id="cx-phone" placeholder="예약할 때 입력한 연락처">
+          <input type="${parentState.audience === 'student' ? 'number' : 'tel'}" id="cx-phone" placeholder="${parentState.audience === 'student' ? '예: 12' : '예약할 때 입력한 연락처'}">
 
         </div>
 
@@ -976,7 +994,7 @@ function doCancelBooking(slot, slotEl, bg) {
 
   const phone = $('#cx-phone', bg).value.trim();
 
-  if (!phone) return toast('학부모 연락처를 입력해주세요');
+  if (!phone) return toast(parentState.audience === 'student' ? '학생 번호를 입력해주세요' : '학부모 연락처를 입력해주세요');
 
   armConfirm($('#cx-submit', bg), '정말 취소할까요? 다시 누르면 취소돼요', () => {
 
@@ -1618,13 +1636,17 @@ function renderTeacherDashboard() {
 
             <div style="width:100%;">
 
-              학부모 공유 코드: <strong>${t.parentCode}</strong>
+              공유 코드: <strong>${t.parentCode}</strong>
 
               <textarea id="shareMsgText" class="share-msg-box" readonly rows="6"></textarea>
 
               <button type="button" class="btn btn-primary btn-block" id="copyShareMsgBtn" style="margin-top:8px;">학부모께 보낼 메시지 복사하기</button>
 
               <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}</span>
+
+              <button type="button" class="btn btn-secondary btn-block" id="copyStudentMsgBtn" style="margin-top:8px;">학생에게 보낼 메시지 복사하기</button>
+
+              <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}&for=student</span>
 
             </div>
 
@@ -1676,6 +1698,12 @@ function renderTeacherDashboard() {
 
       });
 
+      $('#copyStudentMsgBtn').addEventListener('click', () => {
+
+        copyToClipboard(buildStudentShareMessage(t), '메시지를 복사했어요! 학생에게 붙여넣기 해주세요');
+
+      });
+
     }
 
   });
@@ -1705,6 +1733,25 @@ function buildParentShareMessage(t) {
 * 신청 및 취소 모두 위 링크에서 가능합니다.
 
 감사합니다.`;
+
+}
+
+
+
+/** 학생에게 그대로 붙여넣어 보낼 수 있는 안내 메시지(링크 포함)를 만든다. */
+
+function buildStudentShareMessage(t) {
+
+  const link = `${location.origin}${location.pathname}?code=${t.parentCode}&for=student`;
+
+  return `안녕하세요, ${t.school} ${plainGradeClass(t.grade, t.teacherClass)} 담임 ${t.teacherName}입니다.
+
+쉬는시간·점심시간·방과후 중에 선생님과 이야기하고 싶으면, 아래 링크에서 편한 시간을 골라 신청해주세요.
+
+📌 ${link}
+
+* 신청 및 취소 모두 위 링크에서 가능합니다.
+고마워요.`;
 
 }
 
@@ -3436,7 +3483,7 @@ function renderBookingsList() {
 
     for (const s of entry.slots) {
 
-      if (s.booking) bookings.push({ date, slot_id: s.slot_id, start_time: s.start_time, ...s.booking });
+      if (s.booking) bookings.push({ date, slot_id: s.slot_id, start_time: s.start_time, audience: s.audience, ...s.booking });
 
     }
 
@@ -3468,7 +3515,9 @@ function renderBookingsList() {
 
       </div>
 
-      <div class="booking-item-meta"><strong>학부모</strong> ${escapeHtml(b.parent_name)} · ${escapeHtml(b.parent_phone)}</div>
+      ${b.audience === 'student'
+        ? '<div class="booking-item-meta"><strong>학생 본인 신청</strong></div>'
+        : `<div class="booking-item-meta"><strong>학부모</strong> ${escapeHtml(b.parent_name)} · ${escapeHtml(b.parent_phone)}</div>`}
 
       <div>${b.mode === 'phone' ? '<span class="tag method-phone">전화</span>' : '<span class="tag method-visit">방문</span>'}${(b.topics || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
 
@@ -3548,6 +3597,8 @@ window.goBack = goBack;
 
 window.startParent = startParent;
 
+window.startStudent = startStudent;
+
 window.startTeacher = startTeacher;
 
 window.openAvailabilityEditor = openAvailabilityEditor;
@@ -3563,6 +3614,8 @@ window.openBookingsList = openBookingsList;
   const code = params.get('code');
 
   if (code) {
+
+    parentState.audience = params.get('for') === 'student' ? 'student' : 'parent';
 
     $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>시간표 로드 중...</div>`;
 
