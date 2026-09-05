@@ -666,7 +666,7 @@ textarea { resize:vertical; min-height:90px; }
 
 .wd-grid-wrap { overflow-x:auto; border-radius:14px; border:1px solid var(--border); margin-bottom:6px; }
 
-.wd-grid { width:100%; border-collapse:collapse; font-size:12px; background:#fff; font-family:"Pretendard","Noto Sans KR",sans-serif; }
+.wd-grid { width:100%; border-collapse:collapse; font-size:14px; background:#fff; font-family:"Pretendard","Noto Sans KR",sans-serif; }
 
 .wd-grid th, .wd-grid td { border:1px solid var(--border); padding:4px; text-align:center; }
 
@@ -684,7 +684,7 @@ textarea { resize:vertical; min-height:90px; }
 
 .wd-row-head:hover { background:var(--coral-soft); }
 
-.wd-row-time { font-weight:400; color:var(--text-muted); font-size:11px; }
+.wd-row-time { font-weight:400; color:var(--text-muted); font-size:13px; }
 
 .wd-edit-icon { display:block; font-size:11px; opacity:.6; margin-top:2px; }
 
@@ -712,17 +712,17 @@ textarea { resize:vertical; min-height:90px; }
 
 .wd-cell--pulse { animation: cellPulse .5s ease-out; z-index:1; }
 
-.wd-cell-time { font-size:11px; color:var(--text-muted); margin-bottom:2px; cursor:text; }
+.wd-cell-time { font-size:13px; color:var(--text-muted); margin-bottom:2px; cursor:text; }
 
 .wd-cell-time:hover { text-decoration:underline dotted; }
 
-.wd-cell-label { font-size:11px; color:var(--text-muted); }
+.wd-cell-label { font-size:13px; color:var(--text-muted); }
 
 .wd-cell--booked .wd-cell-label { color:var(--sun-text); font-weight:700; }
 
 .wd-method-tag {
 
-  display:inline-block; font-size:10px; padding:2px 6px; border-radius:10px; margin:1px; font-weight:700; cursor:pointer;
+  display:inline-block; font-size:12px; padding:2px 6px; border-radius:10px; margin:1px; font-weight:700; cursor:pointer;
 
 }
 
@@ -1006,7 +1006,7 @@ textarea { resize:vertical; min-height:90px; }
 
 .wd-cell { height:56px; }
 
-.wd-cell-time { font-size:12px; }
+.wd-cell-time { font-size:14px; }
 
 .wd-cell--empty { background:#f3ede2; }
 

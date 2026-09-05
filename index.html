@@ -1588,6 +1588,32 @@ function lunchFor(pattern, dow) {
 
 
 
+function defaultPeriodCountState(base) {
+
+  const byDow = {};
+
+  for (const d of DOW_KEYS) byDow[d] = base || 6;
+
+  return { perWeekday: false, shared: base || 6, byDow };
+
+}
+
+/** lunchFor와 같은 방식 — "요일마다 다르게"가 꺼져 있으면 공통 교시 수(shared)를, 켜져
+
+ * 있으면 요일별 교시 수(byDow)를 쓴다. */
+
+function periodCountFor(pattern, dow) {
+
+  const pc = pattern.periodCounts;
+
+  if (!pc) return pattern.periodCount || 6;
+
+  return pc.perWeekday ? (pc.byDow[dow] || pattern.periodCount || 6) : (pc.shared || pattern.periodCount || 6);
+
+}
+
+
+
 /** 이 요일에 실제로 쓰이는 슬롯 전체(교시 슬롯 + 방과후/직접설정 슬롯, 뒤엣것은 요일 공통)를 돌려준다. */
 
 function slotsForDow(pattern, dow) {
@@ -1961,6 +1987,10 @@ function readFormIntoPattern() {
 
   pattern.periodCount = Number($('#periodCount').value) || 6;
 
+  if (!pattern.periodCounts) pattern.periodCounts = defaultPeriodCountState(pattern.periodCount);
+
+  else pattern.periodCounts.shared = pattern.periodCount;
+
   if (!pattern.lunch) pattern.lunch = defaultLunchState();
 
   regeneratePatternSlots();
@@ -1989,13 +2019,13 @@ function regeneratePatternSlots() {
 
     const startTime = parent.startTime || '09:00';
 
-    const periodCount = parent.periodCount || 6;
-
     pattern.periodSlotsByDow = {};
 
     for (const d of DOW_KEYS) {
 
       const lc = lunchFor(parent, d);
+
+      const periodCount = periodCountFor(parent, d);
 
       pattern.periodSlotsByDow[d] = buildGapSlots({
 
@@ -2021,13 +2051,13 @@ function regeneratePatternSlots() {
 
   const startTime = pattern.startTime || '09:00';
 
-  const periodCount = pattern.periodCount || 6;
-
   pattern.periodSlotsByDow = {};
 
   for (const d of DOW_KEYS) {
 
     const lc = lunchFor(pattern, d);
+
+    const periodCount = periodCountFor(pattern, d);
 
     pattern.periodSlotsByDow[d] = buildPresetSlots({
 
@@ -2247,6 +2277,100 @@ function readLunchFormIntoPattern(pattern, idPrefix) {
 
 
 
+/** lunchFormHtml과 같은 구조 — 요일마다 다르게 켜면 요일별로 교시 수를 따로 입력받는다. */
+
+function periodCountFormHtml(pattern, idPrefix) {
+
+  const state = pattern.periodCounts || defaultPeriodCountState(pattern.periodCount);
+
+  const perWeekday = Boolean(state.perWeekday);
+
+  const dayRowsHtml = DOW_KEYS.map(d => `
+
+      <div class="tt-lunch-day-row">
+
+        <span class="tt-lunch-day-check"><span>${WEEKDAY_LABELS[d]}요일</span></span>
+
+        <input type="number" id="${idPrefix}periodCount-${d}" min="1" max="10" value="${state.byDow?.[d] || state.shared || 6}">
+
+        <span class="tt-lunch-day-sep">교시</span>
+
+      </div>`).join('');
+
+  return `
+
+    <div id="${idPrefix}periodCountSection">
+
+      <label class="tt-lunch-perday-toggle" for="${idPrefix}periodCountPerWeekday">
+
+        <input type="checkbox" id="${idPrefix}periodCountPerWeekday" ${perWeekday ? 'checked' : ''}>
+
+        <span>요일마다 다르게 설정</span>
+
+      </label>
+
+      <div class="row" id="${idPrefix}periodCountControls" style="display:${perWeekday ? 'none' : 'flex'};">
+
+        <div class="field"><label>교시 수</label><input type="number" id="${idPrefix}periodCountShared" min="1" max="10" value="${state.shared || pattern.periodCount || 6}"></div>
+
+      </div>
+
+      <div class="tt-lunch-days" id="${idPrefix}periodCountPerDayForm" style="display:${perWeekday ? 'flex' : 'none'};">${dayRowsHtml}</div>
+
+    </div>
+
+  `;
+
+}
+
+
+
+/** periodCountFormHtml로 그린 폼의 "요일마다 다르게" 토글을 연결한다. */
+
+function wirePeriodCountFormToggles(idPrefix) {
+
+  $(`#${idPrefix}periodCountPerWeekday`).addEventListener('change', () => {
+
+    const per = $(`#${idPrefix}periodCountPerWeekday`).checked;
+
+    $(`#${idPrefix}periodCountControls`).style.display = per ? 'none' : 'flex';
+
+    $(`#${idPrefix}periodCountPerDayForm`).style.display = per ? 'flex' : 'none';
+
+  });
+
+}
+
+
+
+/** periodCountFormHtml로 그린 폼에 지금 입력된 값을 pattern.periodCounts에 반영한다(요일별 슬롯 재계산은 안 한다). */
+
+function readPeriodCountFormIntoPattern(pattern, idPrefix) {
+
+  const perWeekday = Boolean($(`#${idPrefix}periodCountPerWeekday`)?.checked);
+
+  if (!pattern.periodCounts) pattern.periodCounts = defaultPeriodCountState(pattern.periodCount);
+
+  pattern.periodCounts.perWeekday = perWeekday;
+
+  if (!perWeekday) {
+
+    pattern.periodCounts.shared = Number($(`#${idPrefix}periodCountShared`).value) || 6;
+
+  } else {
+
+    for (const d of DOW_KEYS) {
+
+      pattern.periodCounts.byDow[d] = Number($(`#${idPrefix}periodCount-${d}`)?.value) || 6;
+
+    }
+
+  }
+
+}
+
+
+
 const AFTERSCHOOL_FORM_HTML = `
 
   <button type="button" class="btn btn-tonal btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
@@ -2281,7 +2405,13 @@ function wireAfterschoolForm(onAdded) {
 
     form.style.display = opening ? 'flex' : 'none';
 
-    if (opening) { const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none'; }
+    if (opening) {
+
+      const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none';
+
+      const periodCountForm = $('#periodCountSettingsForm'); if (periodCountForm) periodCountForm.style.display = 'none';
+
+    }
 
   });
 
@@ -2541,11 +2671,25 @@ function renderWeekdayEditor() {
 
       <div class="row" style="margin-bottom:10px;">
 
+        ${showLunchPanel ? '<button type="button" class="btn btn-tonal-sun" id="periodCountSettingsToggle">교시 설정</button>' : ''}
+
         ${showLunchPanel ? '<button type="button" class="btn btn-tonal-sun" id="lunchSettingsToggle">점심시간 상세설정</button>' : ''}
 
         <button type="button" class="btn btn-tonal" id="afterschoolToggle">방과후 상담 추가</button>
 
       </div>
+
+      ${showLunchPanel ? `
+
+        <div id="periodCountSettingsForm" style="display:none;margin-bottom:16px;">
+
+          ${periodCountFormHtml(pattern, 'wd')}
+
+          <button type="button" class="btn btn-secondary btn-block" id="wdPeriodCountApply" style="margin-top:8px;">교시 수 반영하기</button>
+
+        </div>
+
+      ` : ''}
 
       ${showLunchPanel ? `
 
@@ -2583,6 +2727,38 @@ function renderWeekdayEditor() {
 
   if (showLunchPanel) {
 
+    $('#periodCountSettingsToggle').addEventListener('click', () => {
+
+      const form = $('#periodCountSettingsForm');
+
+      const opening = form.style.display === 'none';
+
+      form.style.display = opening ? 'block' : 'none';
+
+      if (opening) {
+
+        const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none';
+
+        const afterForm = $('#afterschoolForm'); if (afterForm) afterForm.style.display = 'none';
+
+      }
+
+    });
+
+    wirePeriodCountFormToggles('wd');
+
+    $('#wdPeriodCountApply').addEventListener('click', () => {
+
+      readPeriodCountFormIntoPattern(pattern, 'wd');
+
+      regeneratePatternSlots();
+
+      renderPatternGrid();
+
+      toast('교시 수를 반영했어요');
+
+    });
+
     $('#lunchSettingsToggle').addEventListener('click', () => {
 
       const form = $('#lunchSettingsForm');
@@ -2591,7 +2767,13 @@ function renderWeekdayEditor() {
 
       form.style.display = opening ? 'block' : 'none';
 
-      if (opening) { const afterForm = $('#afterschoolForm'); if (afterForm) afterForm.style.display = 'none'; }
+      if (opening) {
+
+        const afterForm = $('#afterschoolForm'); if (afterForm) afterForm.style.display = 'none';
+
+        const periodCountForm = $('#periodCountSettingsForm'); if (periodCountForm) periodCountForm.style.display = 'none';
+
+      }
 
     });
 
@@ -2767,11 +2949,13 @@ function renderPatternGrid() {
 
 
 
-  // 참고용 구조: 교시 개수·소슬롯 개수는 모든 요일이 같고(점심 위치로 "시각"만 달라진다),
-
+  // 요일마다 교시 수가 다를 수 있으므로(요일별 교시 설정), 행(교시)을 만들 때는 교시가
+  // 가장 많은 요일을 기준으로 잡는다 — 그래야 어느 요일에만 있는 뒤쪽 교시도 행이 생긴다.
   // 방과후/직접설정 슬롯은 요일 공통이라 어느 요일을 기준으로 잡아도 같다.
 
-  const refDow = DOW_KEYS.find(d => (pattern.periodSlotsByDow?.[d]?.length || 0) > 0) || DOW_KEYS[0];
+  const dowMaxPeriod = (d) => Math.max(0, ...((pattern.periodSlotsByDow?.[d] || []).map(s => s.period || 0)));
+
+  const refDow = DOW_KEYS.reduce((best, d) => (dowMaxPeriod(d) > dowMaxPeriod(best) ? d : best), DOW_KEYS[0]);
 
   const groups = groupByPeriod(slotsForDow(pattern, refDow));
 
@@ -2844,6 +3028,7 @@ function renderPatternGrid() {
 
 
       // 요일마다 이 교시의 그룹을 미리 찾아둔다(방과후 등 요일-공통 슬롯은 이 group을 그대로 쓴다).
+      // 어느 요일에 이 교시 자체가 없으면(요일별 교시 수가 더 적으면) null로 남겨, 그 칸은 빈 칸으로 그린다.
 
       const dayGroups = {};
 
@@ -2851,7 +3036,7 @@ function renderPatternGrid() {
 
         for (let w = 1; w <= 5; w++) {
 
-          dayGroups[w] = groupByPeriod(pattern.periodSlotsByDow?.[w] || []).find(g => g.period === group.period) || group;
+          dayGroups[w] = groupByPeriod(pattern.periodSlotsByDow?.[w] || []).find(g => g.period === group.period) || null;
 
         }
 
@@ -2874,6 +3059,8 @@ function renderPatternGrid() {
           const date = days[w];
 
           if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+
+          if (group.period && !dayGroups[w]) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
 
           const slot = group.period ? (dayGroups[w].slots[subIdx] || refSlot) : refSlot;
 
@@ -3337,7 +3524,14 @@ function startEditPeriodTime(group) {
 
     : group.slots;
 
-  if (allSlots.some(s => isSlotTimeBooked(s.start_time))) {
+  // 이 교시보다 뒤에 있는 교시들 — 시작 시각을 옮기면 이만큼도 같은 만큼 밀려야 시간표가 안 겹친다.
+  const laterSlots = group.period
+
+    ? DOW_KEYS.flatMap(d => (pattern.periodSlotsByDow?.[d] || []).filter(s => s.period && s.period > group.period))
+
+    : [];
+
+  if (allSlots.some(s => isSlotTimeBooked(s.start_time)) || laterSlots.some(s => isSlotTimeBooked(s.start_time))) {
 
     return toast('이미 예약이 있는 교시는 시간을 바꿀 수 없어요.');
 
@@ -3353,7 +3547,7 @@ function startEditPeriodTime(group) {
 
     subtitle: group.period
 
-      ? '이 교시 안의 모든 요일 상담 슬롯이 같은 간격을 유지한 채 함께 옮겨져요'
+      ? '이 교시 시작 시각을 바꾸면, 뒤 교시들도 같은 만큼 함께 밀려요'
 
       : '이 교시 안의 상담 슬롯 전체가 같은 간격을 유지한 채 함께 옮겨져요',
 
@@ -3365,17 +3559,23 @@ function startEditPeriodTime(group) {
 
       if (delta !== 0) {
 
-        allSlots.forEach(s => { s.start_time = shiftTimeString(s.start_time, delta); });
+        const shiftSlot = (s) => {
 
-        if (firstSlot.period_range) {
+          s.start_time = shiftTimeString(s.start_time, delta);
 
-          const [rs, re] = firstSlot.period_range.split('~');
+          if (s.period_range) {
 
-          const newRange = `${addMinutes(rs, delta)}~${addMinutes(re, delta)}`;
+            const [rs, re] = s.period_range.split('~');
 
-          allSlots.forEach(s => { s.period_range = newRange; });
+            s.period_range = `${addMinutes(rs, delta)}~${addMinutes(re, delta)}`;
 
-        }
+          }
+
+        };
+
+        allSlots.forEach(shiftSlot);
+
+        laterSlots.forEach(shiftSlot);
 
       }
 
