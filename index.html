@@ -494,6 +494,8 @@ function renderParentTimetableView() {
 
         <p class="subtitle">상담할 날짜를 고른 뒤, 예약 가능한 시간을 선택해주세요.</p>
 
+        <button type="button" class="btn btn-tonal btn-block" onclick="openQnaBoard()" style="margin-bottom:16px;">질문 게시판 →</button>
+
 
 
         ${data.dates.length === 0 ? '<div class="empty-state"><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
@@ -1029,6 +1031,356 @@ async function doConfirmCancelBooking(slot, slotEl, bg, phone) {
     btn.disabled = false; btn.textContent = '예약 취소하기';
 
     btn.classList.remove('btn-confirm-armed');
+
+    toast(err.message);
+
+  }
+
+}
+
+
+
+/*****************************************************
+
+ * 질문 게시판 (학부모·학생 ↔ 선생님 공용, 같은 코드로 하나의 글판을 같이 본다)
+
+ *****************************************************/
+
+let qnaState = { list: [] };
+
+function openQnaBoard() {
+
+  setView('qna-board', () => {
+
+    $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>불러오는 중...</div>`;
+
+    db.getQnaList(parentState.parentCode).then(list => {
+
+      qnaState.list = list;
+
+      renderQnaBoard();
+
+    }).catch(err => {
+
+      $('#main').innerHTML = `<div class="card"><p>${escapeHtml(err.message)}</p></div>`;
+
+    });
+
+  });
+
+}
+
+function renderQnaBoard() {
+
+  const page = parentState.pageData;
+
+  $('#main').innerHTML = `
+
+    <div class="card">
+
+      <h2>${gradeClassLabel(page.grade, page.teacher_class)} · ${escapeHtml(page.teacher_name)} 선생님께 질문하기</h2>
+
+      <p class="subtitle">궁금한 점을 남기면 선생님이 답변해주세요. 남긴 질문과 답변은 이 코드로 들어온 다른 분들도 볼 수 있어요.</p>
+
+      <button type="button" class="btn btn-primary btn-block" id="qnaNewBtn" style="margin-bottom:16px;">질문 남기기</button>
+
+      <div id="qnaList"></div>
+
+    </div>
+
+  `;
+
+  $('#qnaNewBtn').addEventListener('click', openQnaForm);
+
+  renderQnaList();
+
+}
+
+function renderQnaList() {
+
+  const area = $('#qnaList');
+
+  if (qnaState.list.length === 0) {
+
+    area.innerHTML = '<p class="hint">아직 등록된 질문이 없어요.</p>';
+
+    return;
+
+  }
+
+  area.innerHTML = qnaState.list.map(q => `
+
+    <div class="qna-item">
+
+      <div class="qna-item-head">
+
+        <strong>${escapeHtml(q.title)}</strong>
+
+        <span class="qna-item-meta">${escapeHtml(q.author_name)} · ${formatMonthDay(q.created_at.slice(0, 10))}</span>
+
+      </div>
+
+      <div class="qna-item-content">${escapeHtml(q.content).replace(/\n/g, '<br>')}</div>
+
+      ${q.answer ? `
+
+        <div class="qna-answer">
+
+          <div class="qna-answer-label">선생님 답변</div>
+
+          <div>${escapeHtml(q.answer).replace(/\n/g, '<br>')}</div>
+
+        </div>
+
+      ` : `<div class="qna-pending">아직 답변 대기 중이에요</div>`}
+
+    </div>
+
+  `).join('');
+
+}
+
+function openQnaForm() {
+
+  const bg = el(`
+
+    <div class="modal-bg" id="qnaFormBg">
+
+      <div class="modal">
+
+        <div class="modal-header">
+
+          <h2>질문 남기기</h2>
+
+          <button type="button" class="modal-close" id="qnaFormClose">✕</button>
+
+        </div>
+
+        <div class="field">
+
+          <label>이름 <span class="req">*</span></label>
+
+          <input type="text" id="qna-name" placeholder="예: 1반 홍길동 학부모">
+
+        </div>
+
+        <div class="field">
+
+          <label>제목 <span class="req">*</span></label>
+
+          <input type="text" id="qna-title" placeholder="예: 상담 시간 변경 문의">
+
+        </div>
+
+        <div class="field">
+
+          <label>내용 <span class="req">*</span></label>
+
+          <textarea id="qna-content" placeholder="궁금한 내용을 적어주세요"></textarea>
+
+        </div>
+
+        <button type="button" class="btn btn-primary btn-block btn-lg" id="qnaSubmit" style="margin-top:20px;">등록하기</button>
+
+      </div>
+
+    </div>
+
+  `);
+
+  document.getElementById('modalRoot').appendChild(bg);
+
+  bg.addEventListener('click', (e) => { if (e.target === bg) closeModal(); });
+
+  $('#qnaFormClose', bg).addEventListener('click', closeModal);
+
+  $('#qnaSubmit', bg).addEventListener('click', () => submitQnaPost(bg));
+
+}
+
+async function submitQnaPost(bg) {
+
+  const name = $('#qna-name', bg).value.trim();
+
+  const title = $('#qna-title', bg).value.trim();
+
+  const content = $('#qna-content', bg).value.trim();
+
+  if (!name) return toast('이름을 입력해주세요');
+
+  if (!title) return toast('제목을 입력해주세요');
+
+  if (!content) return toast('내용을 입력해주세요');
+
+  const btn = $('#qnaSubmit', bg);
+
+  btn.disabled = true; btn.textContent = '등록 중...';
+
+  try {
+
+    await db.createQnaPost(parentState.parentCode, name, title, content);
+
+    closeModal();
+
+    toast('질문을 등록했어요');
+
+    qnaState.list = await db.getQnaList(parentState.parentCode);
+
+    renderQnaList();
+
+  } catch (err) {
+
+    btn.disabled = false; btn.textContent = '등록하기';
+
+    toast(err.message);
+
+  }
+
+}
+
+/** 교사 쪽 질문 게시판 — 답변 달기·삭제. */
+
+function openTeacherQna() {
+
+  setView('teacher-qna', () => {
+
+    $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>질문 목록 로드 중...</div>`;
+
+    db.getTeacherQnaList(teacherState.pageId, teacherState.adminCode).then(list => {
+
+      teacherState.qnaList = list;
+
+      renderTeacherQna();
+
+    }).catch(err => {
+
+      $('#main').innerHTML = `<div class="card"><p>${escapeHtml(err.message)}</p></div>`;
+
+    });
+
+  });
+
+}
+
+function renderTeacherQna() {
+
+  const list = teacherState.qnaList || [];
+
+  $('#main').innerHTML = `
+
+    <div class="card">
+
+      <h2>질문 게시판</h2>
+
+      <p class="subtitle">학부모·학생이 남긴 질문에 답변하세요.</p>
+
+      <div id="teacherQnaList"></div>
+
+    </div>
+
+  `;
+
+  const area = $('#teacherQnaList');
+
+  if (list.length === 0) {
+
+    area.innerHTML = '<p class="hint">아직 등록된 질문이 없어요.</p>';
+
+    return;
+
+  }
+
+  area.innerHTML = list.map((q, i) => `
+
+    <div class="qna-item">
+
+      <div class="qna-item-head">
+
+        <strong>${escapeHtml(q.title)}</strong>
+
+        <span class="qna-item-meta">${escapeHtml(q.author_name)} · ${formatMonthDay(q.created_at.slice(0, 10))}</span>
+
+        <button type="button" class="btn btn-danger" style="padding:6px 10px;font-size:12px;" data-del="${q.id}">삭제</button>
+
+      </div>
+
+      <div class="qna-item-content">${escapeHtml(q.content).replace(/\n/g, '<br>')}</div>
+
+      <div class="qna-answer-form">
+
+        <textarea id="qna-answer-${i}" placeholder="답변을 입력해주세요">${q.answer ? escapeHtml(q.answer) : ''}</textarea>
+
+        <button type="button" class="btn btn-secondary btn-block" data-answer="${q.id}" data-idx="${i}">${q.answer ? '답변 수정하기' : '답변 등록하기'}</button>
+
+      </div>
+
+    </div>
+
+  `).join('');
+
+  $$('[data-answer]', area).forEach(btn => {
+
+    btn.addEventListener('click', () => {
+
+      const postId = btn.dataset.answer;
+
+      const idx = btn.dataset.idx;
+
+      const text = $(`#qna-answer-${idx}`).value.trim();
+
+      if (!text) return toast('답변 내용을 입력해주세요');
+
+      doAnswerQna(postId, text);
+
+    });
+
+  });
+
+  $$('[data-del]', area).forEach(btn => {
+
+    btn.addEventListener('click', () => {
+
+      armConfirm(btn, '정말 삭제할까요? 다시 누르면 삭제돼요', () => doDeleteQna(btn.dataset.del));
+
+    });
+
+  });
+
+}
+
+async function doAnswerQna(postId, answer) {
+
+  try {
+
+    await db.answerQnaPost(teacherState.pageId, teacherState.adminCode, postId, answer);
+
+    toast('답변을 등록했어요');
+
+    teacherState.qnaList = await db.getTeacherQnaList(teacherState.pageId, teacherState.adminCode);
+
+    renderTeacherQna();
+
+  } catch (err) {
+
+    toast(err.message);
+
+  }
+
+}
+
+async function doDeleteQna(postId) {
+
+  try {
+
+    await db.deleteQnaPost(teacherState.pageId, teacherState.adminCode, postId);
+
+    toast('삭제했어요');
+
+    teacherState.qnaList = await db.getTeacherQnaList(teacherState.pageId, teacherState.adminCode);
+
+    renderTeacherQna();
+
+  } catch (err) {
 
     toast(err.message);
 
@@ -1705,6 +2057,12 @@ function renderTeacherDashboard() {
         <button type="button" class="home-choice" onclick="openBookingsList()">
 
           <span class="txt"><strong>예약 현황</strong><span>신청 내용을 확인하고 예약을 관리하세요.</span></span>
+
+        </button>
+
+        <button type="button" class="home-choice" onclick="openTeacherQna()">
+
+          <span class="txt"><strong>질문 게시판</strong><span>학부모·학생 질문에 답변하세요.</span></span>
 
         </button>
 
@@ -3868,6 +4226,10 @@ window.startTeacher = startTeacher;
 window.openAvailabilityEditor = openAvailabilityEditor;
 
 window.openBookingsList = openBookingsList;
+
+window.openQnaBoard = openQnaBoard;
+
+window.openTeacherQna = openTeacherQna;
 
 
 
