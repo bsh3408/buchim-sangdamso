@@ -334,35 +334,33 @@ function renderHome() {
 
           <p class="noticeboard-description">학부모님도, 학생도.<br>선생님과 이야기할 시간을 정해요.</p>
 
-          <div class="noticeboard-actions">
+          <button type="button" class="noticeboard-entry noticeboard-teacher-primary" onclick="startTeacher()">
 
-            <button type="button" class="noticeboard-entry" onclick="startParent()">
+            <span><strong>선생님이신가요?</strong><small>우리 반 상담 시간표와 예약 관리</small></span>
 
-              <span><strong>학부모 상담</strong><small>아이에 대한 이야기를 나눠요</small></span>
+            <span class="noticeboard-arrow" aria-hidden="true">→</span>
 
-              <span class="noticeboard-arrow" aria-hidden="true">→</span>
+          </button>
+
+          <div class="noticeboard-sub-label">학부모·학생이신가요?</div>
+
+          <div class="noticeboard-sub-actions">
+
+            <button type="button" class="noticeboard-sub-entry" onclick="startParent()">
+
+              <strong>학부모 상담</strong><small>아이에 대한 이야기를 나눠요</small>
 
             </button>
 
-            <button type="button" class="noticeboard-entry noticeboard-student" onclick="startStudent()">
+            <button type="button" class="noticeboard-sub-entry noticeboard-student" onclick="startStudent()">
 
-              <span><strong>학생 상담</strong><small>쉬는시간·점심시간·방과후 중에 이야기해요</small></span>
-
-              <span class="noticeboard-arrow" aria-hidden="true">→</span>
+              <strong>학생 상담</strong><small>쉬는시간·점심시간·방과후에</small>
 
             </button>
 
           </div>
 
         </div>
-
-        <button type="button" class="noticeboard-teacher" onclick="startTeacher()">
-
-          <span><strong>선생님이신가요?</strong><small>우리 반 상담 시간표와 예약 관리</small></span>
-
-          <span aria-hidden="true">↗</span>
-
-        </button>
 
       </section>
 
@@ -3060,7 +3058,25 @@ function renderPatternGrid() {
 
           if (!date) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
 
-          if (group.period && !dayGroups[w]) { html += `<td class="wd-cell wd-cell--empty"></td>`; continue; }
+          if (group.period && !dayGroups[w]) {
+
+            // 학부모 시간표는 이 칸을 눌러 그 요일에 이 교시를 바로 추가할 수 있다. 학생 시간표는
+
+            // 학부모 쪽 교시 구조를 그대로 물려받는 화면이라 여기서 따로 늘릴 수 없다.
+
+            if (teacherState.editingAudience === 'parent') {
+
+              html += `<td class="wd-cell wd-cell--addable" data-add-dow="${w}" data-add-period="${group.period}"><span class="wd-cell-label">+ 추가</span></td>`;
+
+            } else {
+
+              html += `<td class="wd-cell wd-cell--empty"></td>`;
+
+            }
+
+            continue;
+
+          }
 
           const slot = group.period ? (dayGroups[w].slots[subIdx] || refSlot) : refSlot;
 
@@ -3237,6 +3253,54 @@ function renderPatternGrid() {
     th.addEventListener('click', () => startEditPeriodTime(group));
 
   });
+
+
+
+  $$('.wd-cell--addable', container).forEach(cell => {
+
+    cell.addEventListener('click', () => {
+
+      addPeriodForWeekday(Number(cell.dataset.addDow), Number(cell.dataset.addPeriod));
+
+    });
+
+  });
+
+}
+
+
+
+/** 그 요일에 아직 없는 교시를 그 요일에도 새로 만든다(요일별 교시 수를 그만큼 늘린 것과 같다).
+
+ * "요일마다 다르게"가 꺼져 있었다면, 지금까지의 공통 교시 수를 그대로 각 요일 기본값으로 삼아
+
+ * 요일별 모드로 바꾼 뒤 이 요일만 늘린다. */
+
+function addPeriodForWeekday(dow, period) {
+
+  const pattern = activePattern();
+
+  if (!pattern.periodCounts) pattern.periodCounts = defaultPeriodCountState(pattern.periodCount);
+
+  if (!pattern.periodCounts.perWeekday) {
+
+    const base = pattern.periodCounts.shared || pattern.periodCount || 6;
+
+    for (const d of DOW_KEYS) pattern.periodCounts.byDow[d] = pattern.periodCounts.byDow[d] || base;
+
+    pattern.periodCounts.perWeekday = true;
+
+  }
+
+  const current = pattern.periodCounts.byDow[dow] || pattern.periodCount || 6;
+
+  if (period > current) pattern.periodCounts.byDow[dow] = period;
+
+  regeneratePatternSlots();
+
+  renderPatternGrid();
+
+  toast(`${WEEKDAY_LABELS[dow]}요일에 ${period}교시를 추가했어요`);
 
 }
 
