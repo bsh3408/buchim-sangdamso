@@ -79,6 +79,20 @@ export const db = {
       p_name: name, p_school_level: schoolLevel, p_school: school, p_grade: grade, p_class: teacherClass,
       p_answer: answer, p_new_password: newPassword,
     }),
+  saveStudentRoster: (pageId, adminCode, entries) =>
+    rpc('save_student_roster', { p_page_id: pageId, p_admin_code: adminCode, p_entries: entries }),
+  getStudentRoster: (pageId, adminCode) =>
+    rpc('get_student_roster', { p_page_id: pageId, p_admin_code: adminCode }),
+  setDateStudentMode: (pageId, adminCode, date, mode) =>
+    rpc('set_date_student_mode', { p_page_id: pageId, p_admin_code: adminCode, p_date: date, p_mode: mode }),
+  autoAssignStudents: (pageId, adminCode, date) =>
+    rpc('auto_assign_students', { p_page_id: pageId, p_admin_code: adminCode, p_date: date }),
+  assignStudentToSlot: (pageId, adminCode, slotId, studentNumber) =>
+    rpc('assign_student_to_slot', {
+      p_page_id: pageId, p_admin_code: adminCode, p_slot_id: slotId, p_student_number: studentNumber || null,
+    }),
+  getStudentAssignment: (parentCode, studentNumber) =>
+    rpc('get_student_assignment', { p_parent_code: parentCode, p_student_number: studentNumber }),
   adminLogin: (username, password) =>
     rpc('admin_login', { p_username: username, p_password: password }),
   adminListTeachers: (username, password) =>

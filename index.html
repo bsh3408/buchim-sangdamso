@@ -2342,6 +2342,12 @@ function renderTeacherDashboard() {
 
           <span class="txt"><strong>학생 상담 시간 설정</strong><span>1교시 전·쉬는시간·점심시간·방과후 중에서 설정하세요.</span></span>
 
+        </button>
+
+        <button type="button" class="home-choice" onclick="openStudentAssign()">
+
+          <span class="txt"><strong>학생 명단·배정</strong><span>명단을 넣고 상담 시간을 나눠주세요.</span></span>
+
         </button>` : ''}
 
         <button type="button" class="home-choice" onclick="openBookingsList()">
@@ -2422,6 +2428,219 @@ async function doChangePassword() {
     btn.disabled = false; btn.textContent = '비밀번호 바꾸기';
     toast(err.message);
   }
+}
+
+let assignState = { roster: [], dates: [], selectedDate: null };
+
+/** 명단 입력칸의 글을 { student_number, student_name } 목록으로 바꾼다.
+ * 한 줄에 한 명이고, 번호와 이름은 빈칸이나 탭으로 나눈다. 엑셀에서 두 열을
+ * 복사해 붙이면 탭으로 구분되므로 그대로 들어온다. */
+function parseRosterText(text) {
+  return String(text || '').split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const m = line.match(/^(\S+)\s+(.+)$/);
+      return m ? { student_number: m[1].trim(), student_name: m[2].trim() } : null;
+    })
+    .filter(Boolean);
+}
+
+function rosterToText(roster) {
+  return (roster || []).map(r => r.student_number + '\t' + r.student_name).join('\n');
+}
+
+/** 이 날짜에 열려 있는 학생 상담 칸만 시각 순으로 추린다. */
+function studentSlotsOf(dateData) {
+  return (dateData?.slots || [])
+    .filter(sl => sl.audience === 'student' && sl.is_open)
+    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+}
+
+function openStudentAssign() {
+  setView('student-assign', () => {
+    $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>불러오는 중...</div>`;
+    Promise.all([
+      db.getStudentRoster(teacherState.pageId, teacherState.adminCode),
+      db.getTeacherSchedule(teacherState.pageId, teacherState.adminCode),
+    ]).then(([roster, schedule]) => {
+      assignState.roster = roster || [];
+      assignState.dates = (schedule?.dates || []).filter(d => studentSlotsOf(d).length > 0);
+      assignState.selectedDate = null;
+      renderStudentAssign();
+    }).catch(err => {
+      $('#main').innerHTML = `<div class="card"><p>${escapeHtml(err.message)}</p></div>`;
+    });
+  });
+}
+
+function renderStudentAssign() {
+  const roster = assignState.roster;
+  $('#main').innerHTML = `
+    <div class="card">
+      <h2>학생 명단·배정</h2>
+      <p class="subtitle">명단을 넣어두면 상담 시간을 한 번에 나눠줄 수 있어요.</p>
+
+      <div class="field">
+        <label for="rosterText">학생 명단 (${roster.length}명)</label>
+        <textarea id="rosterText" rows="8" placeholder="1 김민준&#10;2 이서연&#10;3 박지호">${escapeHtml(rosterToText(roster))}</textarea>
+        <div class="field-hint">한 줄에 한 명씩, 번호와 이름을 빈칸으로 띄어 적어주세요. 엑셀에서 번호·이름 두 칸을 복사해 그대로 붙여넣어도 됩니다.</div>
+      </div>
+      <button type="button" class="btn btn-secondary btn-block" id="rosterSave">명단 저장하기</button>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:24px 0;">
+
+      <h2 style="font-size:20px;">날짜별 상담 시간 배정</h2>
+      ${assignState.dates.length === 0
+        ? '<p class="hint">아직 학생 상담 시간이 없어요. 먼저 “학생 상담 시간 설정”에서 시간을 만들어주세요.</p>'
+        : `<div class="field">
+             <label for="assignDate">날짜</label>
+             <select id="assignDate">
+               <option value="">날짜를 고르세요</option>
+               ${assignState.dates.map(d => `<option value="${d.date}"${assignState.selectedDate === d.date ? ' selected' : ''}>${escapeHtml(d.date)}</option>`).join('')}
+             </select>
+           </div>
+           <div id="assignArea"></div>`}
+    </div>
+  `;
+
+  $('#rosterSave').addEventListener('click', saveRoster);
+  const sel = $('#assignDate');
+  if (sel) {
+    sel.addEventListener('change', () => {
+      assignState.selectedDate = sel.value || null;
+      renderAssignArea();
+    });
+    renderAssignArea();
+  }
+}
+
+async function saveRoster() {
+  const entries = parseRosterText($('#rosterText').value);
+  if (entries.length === 0) return toast('명단을 한 줄에 한 명씩 적어주세요');
+
+  const numbers = entries.map(e => e.student_number);
+  if (new Set(numbers).size !== numbers.length) return toast('같은 번호가 두 번 들어갔어요');
+
+  const btn = $('#rosterSave');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    const count = await db.saveStudentRoster(teacherState.pageId, teacherState.adminCode, entries);
+    assignState.roster = entries;
+    toast(count + '명을 저장했어요');
+    renderStudentAssign();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '명단 저장하기';
+    toast(err.message);
+  }
+}
+
+function renderAssignArea() {
+  const area = $('#assignArea');
+  if (!area) return;
+  const date = assignState.selectedDate;
+  if (!date) { area.innerHTML = ''; return; }
+
+  const dateData = assignState.dates.find(d => d.date === date);
+  const slots = studentSlotsOf(dateData);
+  const mode = dateData?.student_booking_mode || 'self';
+  const filled = slots.filter(sl => sl.booking).length;
+
+  area.innerHTML = `
+    <div class="field">
+      <label>이 날의 방식</label>
+      <div class="choice-group" id="modeGroup">
+        <div class="choice${mode === 'self' ? ' selected' : ''}" data-mode="self">학생이 직접 신청</div>
+        <div class="choice${mode === 'assigned' ? ' selected' : ''}" data-mode="assigned">선생님이 배정</div>
+      </div>
+      <div class="field-hint">배정으로 두면 학생은 직접 고를 수 없고, 자기 번호로 받은 시간만 확인해요.</div>
+    </div>
+
+    ${mode === 'assigned'
+      ? '<button type="button" class="btn btn-secondary btn-block" id="autoAssign" style="margin-bottom:14px;">명단 순서대로 자동 배정</button>'
+      : ''}
+
+    <p class="hint">상담 칸 ${slots.length}개 중 ${filled}개가 찼어요.</p>
+    <div class="t-scroll">
+      <table class="t-table">
+        <thead><tr><th>시간</th><th>구분</th><th>배정된 학생</th></tr></thead>
+        <tbody>
+          ${slots.length === 0
+            ? '<tr><td colspan="3"><p class="hint">이 날에 열린 학생 상담 칸이 없어요.</p></td></tr>'
+            : slots.map(sl => `
+            <tr>
+              <td>${escapeHtml(String(sl.start_time).slice(0, 5))}</td>
+              <td>${escapeHtml(sl.period_label || '')}</td>
+              <td>
+                <select class="slot-assign" data-slot="${sl.slot_id || sl.id}">
+                  <option value="">— 비어 있음 —</option>
+                  ${assignState.roster.map(r => {
+                    const picked = sl.booking && String(sl.booking.student_number) === String(r.student_number);
+                    return `<option value="${escapeHtml(r.student_number)}"${picked ? ' selected' : ''}>${escapeHtml(r.student_number)}번 ${escapeHtml(r.student_name)}</option>`;
+                  }).join('')}
+                </select>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  $$('#modeGroup .choice').forEach(c => {
+    c.addEventListener('click', () => changeDateMode(date, c.dataset.mode));
+  });
+  const auto = $('#autoAssign');
+  if (auto) auto.addEventListener('click', () => runAutoAssign(date));
+  $$('.slot-assign').forEach(sel => {
+    sel.addEventListener('change', () => assignSlot(sel.dataset.slot, sel.value));
+  });
+}
+
+async function changeDateMode(date, mode) {
+  try {
+    await db.setDateStudentMode(teacherState.pageId, teacherState.adminCode, date, mode);
+    const d = assignState.dates.find(x => x.date === date);
+    if (d) d.student_booking_mode = mode;
+    toast(mode === 'assigned' ? '선생님이 배정하는 날로 바꿨어요' : '학생이 직접 신청하는 날로 바꿨어요');
+    renderAssignArea();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function runAutoAssign(date) {
+  const btn = $('#autoAssign');
+  btn.disabled = true; btn.textContent = '배정 중...';
+  try {
+    const res = await db.autoAssignStudents(teacherState.pageId, teacherState.adminCode, date);
+    toast(Number(res.left) > 0
+      ? res.assigned + '명을 배정했어요. 칸이 모자라 ' + res.left + '명이 남았어요'
+      : res.assigned + '명을 배정했어요');
+    await reloadAssignSchedule();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '명단 순서대로 자동 배정';
+    toast(err.message);
+  }
+}
+
+async function assignSlot(slotId, studentNumber) {
+  try {
+    const res = await db.assignStudentToSlot(teacherState.pageId, teacherState.adminCode, slotId, studentNumber);
+    if (res && res.ok === false && res.reason === 'not_in_roster') {
+      toast('명단에 없는 번호예요');
+    } else {
+      toast(studentNumber ? '배정했어요' : '배정을 풀었어요');
+    }
+    await reloadAssignSchedule();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function reloadAssignSchedule() {
+  const schedule = await db.getTeacherSchedule(teacherState.pageId, teacherState.adminCode);
+  assignState.dates = (schedule?.dates || []).filter(d => studentSlotsOf(d).length > 0);
+  renderStudentAssign();
 }
 
 function openSecurityQuestion() {
@@ -4648,6 +4867,7 @@ window.openQnaBoard = openQnaBoard;
 window.openTeacherQna = openTeacherQna;
 window.openChangePassword = openChangePassword;
 window.openSecurityQuestion = openSecurityQuestion;
+window.openStudentAssign = openStudentAssign;
 
 
 
