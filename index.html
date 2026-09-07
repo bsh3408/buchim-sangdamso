@@ -78,6 +78,28 @@ const MODE_LABEL = { phone: '전화', in_person: '방문' };
 
 const SCHOOL_LEVEL_SUFFIX = { elementary: '초등학교', middle: '중학교', high: '고등학교' };
 
+/** 비밀번호를 잊었을 때 본인을 확인하는 질문. 데이터베이스에는 id만 저장하므로
+    id의 의미를 절대 바꾸면 안 된다. 질문은 뒤에만 추가하고, 쓰지 않을 질문도
+    목록에서 지우지 않는다. 지우면 이미 저장된 답이 엉뚱한 질문에 붙는다. */
+const SECURITY_QUESTIONS = [
+  { id: 1, text: '처음 발령받은 학교 이름은?' },
+  { id: 2, text: '어릴 때 기르던 첫 반려동물의 이름은?' },
+  { id: 3, text: '초등학교 때 가장 친했던 친구의 이름은?' },
+  { id: 4, text: '학창 시절 별명은?' },
+  { id: 5, text: '어릴 때 살던 동네 이름은?' },
+];
+
+/** 질문 id로 질문 문구를 찾는다. 목록에 없는 id면 null을 돌려준다. */
+function securityQuestionText(id) {
+  const q = SECURITY_QUESTIONS.find(x => x.id === Number(id));
+  return q ? q.text : null;
+}
+
+/** 확인 질문 선택 상자의 option 목록. 가입 화면과 대시보드가 함께 쓴다. */
+function securityQuestionOptions() {
+  return SECURITY_QUESTIONS.map(q => `<option value="${q.id}">${escapeHtml(q.text)}</option>`).join('');
+}
+
 const SCHOOL_LEVEL_TO_PRESET = { elementary: 'elementary', middle: 'middle', high: 'high' };
 
 const DOW_KEYS = [1, 2, 3, 4, 5]; // JS Date#getDay() 기준 월=1 ~ 금=5
@@ -1570,7 +1592,7 @@ function startPasswordResetRequest() {
       <div class="card entry-card">
         <p class="eyebrow">교사 공간</p>
         <h1>비밀번호를 잊으셨나요?</h1>
-        <p class="subtitle">가입할 때 등록한 정보를 입력하면, 등록된 이메일로 인증 코드를 보내드려요.</p>
+        <p class="subtitle">가입할 때 등록한 정보를 입력하면, 확인 질문을 보여드려요.</p>
         <div class="field"><label for="pr-name">이름</label><input type="text" id="pr-name" placeholder="예: 김민준"></div>
         <div class="field">
           <label for="pr-school">학교</label>
@@ -1587,7 +1609,7 @@ function startPasswordResetRequest() {
           <div class="field"><label for="pr-grade">학년</label><input type="number" id="pr-grade" min="1" max="6" placeholder="예: 2"></div>
           <div class="field"><label for="pr-class">반</label><input type="number" id="pr-class" min="1" max="20" placeholder="예: 3"></div>
         </div>
-        <button class="btn btn-primary btn-block" id="pr-submit">인증 코드 받기</button>
+        <button class="btn btn-primary btn-block" id="pr-submit">확인 질문 보기</button>
       </div>
     `;
     let level = null;
@@ -1615,17 +1637,25 @@ async function doPasswordResetRequest(getLevel) {
   const btn = $('#pr-submit');
   btn.disabled = true; btn.textContent = '확인 중...';
   try {
-    const res = await db.requestPasswordReset(name, level, school, grade, teacherClass);
-    if (!res.ok) {
-      btn.disabled = false; btn.textContent = '인증 코드 받기';
-      if (res.reason === 'no_email') return toast('이메일을 등록하지 않아 비밀번호를 찾을 수 없어요');
-      if (res.reason === 'too_soon') return toast('잠시 후 다시 시도해주세요');
+    const res = await db.getSecurityQuestion(name, level, school, grade, teacherClass);
+    if (!res || !res.ok) {
+      btn.disabled = false; btn.textContent = '확인 질문 보기';
+      if (res && res.reason === 'no_question') {
+        return toast('확인 질문을 등록하지 않아 비밀번호를 찾을 수 없어요');
+      }
+      if (res && res.reason === 'locked') {
+        return toast('답을 여러 번 틀렸어요. 30분 뒤에 다시 시도해주세요');
+      }
       return toast('일치하는 계정을 찾을 수 없어요. 정보를 다시 확인해주세요');
     }
-    toast('인증 코드를 이메일로 보냈어요');
-    startPasswordResetConfirm({ name, level, school, grade, teacherClass });
+    const questionText = securityQuestionText(res.question_id);
+    if (!questionText) {
+      btn.disabled = false; btn.textContent = '확인 질문 보기';
+      return toast('확인 질문을 불러오지 못했어요');
+    }
+    startPasswordResetConfirm({ name, level, school, grade, teacherClass, questionText });
   } catch (err) {
-    btn.disabled = false; btn.textContent = '인증 코드 받기';
+    btn.disabled = false; btn.textContent = '확인 질문 보기';
     toast(err.message);
   }
 }
@@ -1635,9 +1665,9 @@ function startPasswordResetConfirm(identity) {
     $('#main').innerHTML = `
       <div class="card entry-card">
         <p class="eyebrow">교사 공간</p>
-        <h1>인증 코드를 입력해주세요</h1>
-        <p class="subtitle">이메일로 받은 6자리 인증 코드와 새 비밀번호를 입력해주세요.</p>
-        <div class="field"><label for="pc-code">인증 코드</label><input type="text" id="pc-code" inputmode="numeric" maxlength="6" placeholder="예: 482913"></div>
+        <h1>비밀번호를 새로 정해요</h1>
+        <p class="subtitle">${escapeHtml(identity.questionText)}</p>
+        <div class="field"><label for="pc-answer">답</label><input type="text" id="pc-answer" placeholder="가입할 때 적은 답"></div>
         <div class="field"><label for="pc-password">새 비밀번호 (4자리 이상)</label><input type="password" id="pc-password" placeholder="새로 쓸 비밀번호"></div>
         <button class="btn btn-primary btn-block" id="pc-submit">비밀번호 재설정</button>
       </div>
@@ -1647,24 +1677,28 @@ function startPasswordResetConfirm(identity) {
 }
 
 async function doPasswordResetConfirm(identity) {
-  const code = $('#pc-code').value.trim();
+  const answer = $('#pc-answer').value.trim();
   const newPassword = $('#pc-password').value;
-  if (!code || !newPassword) return toast('인증 코드와 새 비밀번호를 모두 입력해주세요');
+  if (!answer || !newPassword) return toast('답과 새 비밀번호를 모두 입력해주세요');
 
   const btn = $('#pc-submit');
   btn.disabled = true; btn.textContent = '확인 중...';
   try {
-    const res = await db.confirmPasswordReset(
+    const res = await db.resetPasswordByAnswer(
       identity.name, identity.level, identity.school, identity.grade, identity.teacherClass,
-      code, newPassword
+      answer, newPassword
     );
     if (!res || !res.ok) {
       btn.disabled = false; btn.textContent = '비밀번호 재설정';
       if (res && res.reason === 'weak_password') return toast('새 비밀번호는 4자 이상이어야 해요');
-      if (res && res.reason === 'too_many_attempts') {
-        return toast('인증 코드를 너무 여러 번 틀렸어요. 비밀번호 찾기를 처음부터 다시 해주세요');
+      if (res && res.reason === 'locked') {
+        return toast('답을 여러 번 틀렸어요. 30분 뒤에 다시 시도해주세요');
       }
-      return toast('인증 코드가 올바르지 않거나 만료됐어요');
+      if (res && res.reason === 'no_question') {
+        return toast('확인 질문을 등록하지 않아 비밀번호를 찾을 수 없어요');
+      }
+      if (res && res.reason === 'wrong_answer') return toast('답이 일치하지 않아요');
+      return toast('일치하는 계정을 찾을 수 없어요. 정보를 다시 확인해주세요');
     }
     toast('비밀번호를 새로 설정했어요. 다시 로그인해주세요');
     startTeacherLogin();
@@ -1731,9 +1765,13 @@ function startTeacherRegister() {
         </div>
 
         <div class="field">
-          <label for="tr-email">이메일 (선택)</label>
-          <input type="email" id="tr-email" placeholder="예: teacher@school.kr">
-          <div class="field-hint">이메일은 비밀번호를 찾는 데 쓰입니다.</div>
+          <label for="tr-question">확인 질문 (선택)</label>
+          <select id="tr-question">
+            <option value="">질문을 고르세요</option>
+            ${securityQuestionOptions()}
+          </select>
+          <input type="text" id="tr-answer" placeholder="답" disabled style="margin-top:8px;">
+          <div class="field-hint">비밀번호를 잊었을 때 이 질문으로 본인을 확인해요. 답은 암호로 바꿔서 보관하니 아무도 볼 수 없어요.</div>
         </div>
         <div class="consent-row">
           <label class="consent-label">
@@ -1762,6 +1800,18 @@ function startTeacherRegister() {
 
     });
 
+    // 질문을 고르기 전에는 답을 쓸 수 없게 한다. 질문 없이 답만 남는 상태를 막는다.
+
+    $('#tr-question').addEventListener('change', () => {
+
+      const chosen = $('#tr-question').value !== '';
+
+      $('#tr-answer').disabled = !chosen;
+
+      if (!chosen) $('#tr-answer').value = '';
+
+    });
+
     $('#tr-submit').addEventListener('click', () => doTeacherRegister(() => level));
 
   });
@@ -1784,7 +1834,9 @@ async function doTeacherRegister(getLevel) {
 
   const teacherClass = $('#tr-class').value.trim();
 
-  const email = $('#tr-email').value.trim();
+  const questionId = $('#tr-question').value ? Number($('#tr-question').value) : null;
+
+  const answer = $('#tr-answer').value.trim();
 
   const consent = $('#tr-consent').checked;
 
@@ -1800,6 +1852,12 @@ async function doTeacherRegister(getLevel) {
 
   }
 
+  if (questionId && !answer) {
+
+    return toast('확인 질문의 답을 입력해주세요');
+
+  }
+
   const school = `${schoolPrefix}${SCHOOL_LEVEL_SUFFIX[level]}`;
 
 
@@ -1810,7 +1868,7 @@ async function doTeacherRegister(getLevel) {
 
   try {
 
-    const pageId = await db.getOrCreateTeacher(name, code, school, level, grade, teacherClass, email);
+    const pageId = await db.getOrCreateTeacher(name, code, school, level, grade, teacherClass, questionId, answer);
 
     teacherState.pageId = pageId;
 
@@ -2208,6 +2266,10 @@ function renderTeacherDashboard() {
           <span class="txt"><strong>비밀번호 변경</strong><span>로그인에 쓰는 비밀번호를 바꾸세요.</span></span>
         </button>
 
+        <button type="button" class="home-choice" onclick="openSecurityQuestion()">
+          <span class="txt"><strong>확인 질문 설정</strong><span>비밀번호를 잊었을 때 본인을 확인할 질문을 정하세요.</span></span>
+        </button>
+
       </div>
 
     `;
@@ -2264,6 +2326,55 @@ async function doChangePassword() {
     renderTeacherDashboard();
   } catch (err) {
     btn.disabled = false; btn.textContent = '비밀번호 바꾸기';
+    toast(err.message);
+  }
+}
+
+function openSecurityQuestion() {
+  setView('security-question', () => {
+    $('#main').innerHTML = `
+      <div class="card entry-card">
+        <p class="eyebrow">교사 공간</p>
+        <h1>확인 질문 설정</h1>
+        <p class="subtitle">비밀번호를 잊었을 때 이 질문으로 본인을 확인해요.</p>
+        <div class="field"><label for="sq-current">현재 비밀번호</label><input type="password" id="sq-current" placeholder="지금 쓰는 비밀번호"></div>
+        <div class="field">
+          <label for="sq-question">확인 질문</label>
+          <select id="sq-question">
+            <option value="">확인 질문 사용하지 않기</option>
+            ${securityQuestionOptions()}
+          </select>
+          <input type="text" id="sq-answer" placeholder="답" style="margin-top:8px;">
+          <div class="field-hint">답은 암호로 바꿔서 보관하니 아무도 볼 수 없어요. 질문을 고르지 않고 저장하면 확인 질문이 삭제됩니다.</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="sq-submit">저장하기</button>
+      </div>
+    `;
+    $('#sq-answer').disabled = true;
+    $('#sq-question').addEventListener('change', () => {
+      const chosen = $('#sq-question').value !== '';
+      $('#sq-answer').disabled = !chosen;
+      if (!chosen) $('#sq-answer').value = '';
+    });
+    $('#sq-submit').addEventListener('click', doSetSecurityQuestion);
+  });
+}
+
+async function doSetSecurityQuestion() {
+  const current = $('#sq-current').value;
+  const questionId = $('#sq-question').value ? Number($('#sq-question').value) : null;
+  const answer = $('#sq-answer').value.trim();
+  if (!current) return toast('현재 비밀번호를 입력해주세요');
+  if (questionId && !answer) return toast('확인 질문의 답을 입력해주세요');
+
+  const btn = $('#sq-submit');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    await db.setSecurityQuestion(teacherState.pageId, current, questionId, answer);
+    toast(questionId ? '확인 질문을 저장했어요' : '확인 질문을 삭제했어요');
+    renderTeacherDashboard();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '저장하기';
     toast(err.message);
   }
 }
@@ -4407,6 +4518,7 @@ window.openQnaBoard = openQnaBoard;
 
 window.openTeacherQna = openTeacherQna;
 window.openChangePassword = openChangePassword;
+window.openSecurityQuestion = openSecurityQuestion;
 
 
 
