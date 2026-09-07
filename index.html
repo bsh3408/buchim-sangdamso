@@ -528,6 +528,15 @@ function renderParentTimetableView() {
 
         <button type="button" class="btn btn-tonal btn-block" onclick="openQnaBoard()" style="margin-bottom:16px;">질문 게시판 →</button>
 
+        ${parentState.audience === 'student' ? `
+          <div class="info-box" style="margin-bottom:16px;">
+            <div style="margin-bottom:10px;">선생님이 상담 시간을 정해주신 날도 있어요. 번호를 넣으면 내 시간을 확인할 수 있어요.</div>
+            <div class="field"><label for="myNum">학생 번호</label><input type="number" id="myNum" placeholder="예: 12"></div>
+            <button type="button" class="btn btn-secondary btn-block" id="myNumBtn" style="margin-top:8px;">내 상담 시간 보기</button>
+            <div id="myAssign" style="margin-top:10px;"></div>
+          </div>
+        ` : ''}
+
 
 
         ${data.dates.length === 0 ? '<div class="empty-state"><p>현재 열려있는 상담 가능 시간이 없어요.</p></div>' : `
@@ -550,6 +559,10 @@ function renderParentTimetableView() {
 
     `;
 
+    const myBtn = $('#myNumBtn');
+
+    if (myBtn) myBtn.addEventListener('click', lookupMyAssignment);
+
     if (data.dates.length > 0) {
 
       renderParentCalendarWidget();
@@ -563,6 +576,39 @@ function renderParentTimetableView() {
 }
 
 
+
+/** 선생님이 배정하는 날에는 학생이 칸을 고를 수 없다. 대신 자기 번호를 넣어
+ * 배정받은 시간을 확인한다. 남의 배정은 돌려주지 않는다. */
+async function lookupMyAssignment() {
+  const number = $('#myNum').value.trim();
+  if (!number) return toast('학생 번호를 입력해주세요');
+
+  const btn = $('#myNumBtn');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    const res = await db.getStudentAssignment(parentState.parentCode, number);
+    btn.disabled = false; btn.textContent = '내 상담 시간 보기';
+    const list = (res && res.assignments) || [];
+    const area = $('#myAssign');
+    if (list.length === 0) {
+      area.innerHTML = '<p class="hint">아직 배정된 상담 시간이 없어요. 번호를 다시 확인해보세요.</p>';
+      return;
+    }
+    area.innerHTML = `
+      <div class="info-box">
+        <div style="margin-bottom:8px;"><strong>${escapeHtml(list[0].student_name)}</strong> 학생의 상담 시간이에요.</div>
+        ${list.map(a => `
+          <div style="padding:6px 0;border-top:1px solid var(--border);">
+            ${escapeHtml(a.date)} (${dowLabel(a.date)}) ${escapeHtml(String(a.start_time).slice(0, 5))}
+            ${a.period_label ? ` · ${escapeHtml(a.period_label)}` : ''}
+            ${a.assigned ? '' : ' · 직접 신청한 시간'}
+          </div>`).join('')}
+      </div>`;
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '내 상담 시간 보기';
+    toast(err.message);
+  }
+}
 
 function renderParentCalendarWidget() {
 
@@ -596,6 +642,18 @@ function renderParentTimetableBody() {
 
   area.innerHTML = `<div class="cb-title" style="opacity:.7;font-size:13px;margin-bottom:14px;">${dateEntry.date} (${dowLabel(dateEntry.date)})</div>`;
 
+  // 선생님이 배정하는 날은 학생이 칸을 고를 수 없다. 서버에서도 막지만, 여기서
+
+  // 미리 알려줘야 학생이 헛되이 눌러보지 않는다.
+
+  const assignedDay = parentState.audience === 'student' && dateEntry.student_booking_mode === 'assigned';
+
+  if (assignedDay) {
+
+    area.innerHTML += `<div class="info-box" style="margin-bottom:14px;">이 날은 선생님이 상담 시간을 정해주세요. 위에서 학생 번호를 넣으면 내 시간을 볼 수 있어요.</div>`;
+
+  }
+
   for (const group of groupByPeriod(dateEntry.slots)) {
 
     const block = el(`<div class="period-group"></div>`);
@@ -618,9 +676,21 @@ function renderParentTimetableBody() {
 
     renderParentSlotGrid(grid, group.slots, {
 
-      onEmptyClick: (slot) => openBookingModal(slot, dateEntry),
+      onEmptyClick: (slot) => {
 
-      onFilledClick: (slot, slotEl) => openCancelModal(slot, dateEntry, slotEl),
+        if (assignedDay) return toast('이 날은 선생님이 정해주세요');
+
+        openBookingModal(slot, dateEntry);
+
+      },
+
+      onFilledClick: (slot, slotEl) => {
+
+        if (assignedDay) return toast('선생님이 정한 시간이라 여기서는 바꿀 수 없어요');
+
+        openCancelModal(slot, dateEntry, slotEl);
+
+      },
 
     }, dateEntry.duration_minutes);
 
