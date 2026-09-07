@@ -1315,6 +1315,7 @@ h1{font-size:34px}h2{font-size:29px}h3{font-size:23px}
 .booking-summary{background:#f4e6d8;border-color:var(--primary)}
 
 .site-footer{justify-content:center;text-align:center;font-family:Pretendard,sans-serif;font-size:12px;font-weight:400;letter-spacing:.5px;color:#796653;padding:24px 0 28px;border-color:var(--border)}
+.site-footer a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 
 .noticeboard-home{max-width:520px;margin:0 auto}
 

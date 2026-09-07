@@ -44,7 +44,7 @@
 
   <main id="main"></main>
 
-  <footer class="site-footer">made by. BYUN</footer>
+  <footer class="site-footer">made by. BYUN &nbsp;·&nbsp; 문의사항 : <a href="mailto:bsh3408@gmail.com">bsh3408@gmail.com</a></footer>
 
 </div>
 
@@ -1078,25 +1078,17 @@ async function doConfirmCancelBooking(slot, slotEl, bg, phone) {
 
  *****************************************************/
 
-let qnaState = { list: [] };
+let qnaState = { list: [], me: null }; // me: 내 글을 확인한 { name, accessCode }
 
 function openQnaBoard() {
 
   setView('qna-board', () => {
 
-    $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>불러오는 중...</div>`;
+    qnaState.list = [];
 
-    db.getQnaList(parentState.parentCode).then(list => {
+    qnaState.me = null;
 
-      qnaState.list = list;
-
-      renderQnaBoard();
-
-    }).catch(err => {
-
-      $('#main').innerHTML = `<div class="card"><p>${escapeHtml(err.message)}</p></div>`;
-
-    });
+    renderQnaBoard();
 
   });
 
@@ -1112,9 +1104,21 @@ function renderQnaBoard() {
 
       <h2>${gradeClassLabel(page.grade, page.teacher_class)} · ${escapeHtml(page.teacher_name)} 선생님께 질문하기</h2>
 
-      <p class="subtitle">궁금한 점을 남기면 선생님이 답변해주세요. 남긴 질문과 답변은 이 코드로 들어온 다른 분들도 볼 수 있어요.</p>
+      <p class="subtitle">남긴 질문은 선생님과 글쓴이 본인만 볼 수 있어요. 다른 분들에게는 보이지 않아요.</p>
 
       <button type="button" class="btn btn-primary btn-block" id="qnaNewBtn" style="margin-bottom:16px;">질문 남기기</button>
+
+      <div class="info-box" style="margin-bottom:16px;">
+
+        <div style="margin-bottom:10px;">이미 남긴 질문의 답변을 보시려면, 글을 쓸 때 적으신 이름과 확인 번호를 넣어주세요.</div>
+
+        <div class="field"><label for="qna-my-name">이름</label><input type="text" id="qna-my-name" placeholder="글 쓸 때 적은 이름"></div>
+
+        <div class="field"><label for="qna-my-code">확인 번호</label><input type="password" id="qna-my-code" placeholder="글 쓸 때 정한 번호"></div>
+
+        <button type="button" class="btn btn-secondary btn-block" id="qnaMyBtn" style="margin-top:8px;">내 질문 보기</button>
+
+      </div>
 
       <div id="qnaList"></div>
 
@@ -1124,7 +1128,65 @@ function renderQnaBoard() {
 
   $('#qnaNewBtn').addEventListener('click', openQnaForm);
 
-  renderQnaList();
+  $('#qnaMyBtn').addEventListener('click', loadMyQnaPosts);
+
+  if (qnaState.me) {
+
+    $('#qna-my-name').value = qnaState.me.name;
+
+    renderQnaList();
+
+  }
+
+}
+
+/** 이름과 확인 번호로 자기가 남긴 질문만 불러온다. */
+
+async function loadMyQnaPosts() {
+
+  const name = $('#qna-my-name').value.trim();
+
+  const accessCode = $('#qna-my-code').value.trim();
+
+  if (!name || !accessCode) return toast('이름과 확인 번호를 모두 입력해주세요');
+
+  const btn = $('#qnaMyBtn');
+
+  btn.disabled = true; btn.textContent = '불러오는 중...';
+
+  try {
+
+    const list = await db.getMyQnaPosts(parentState.parentCode, name, accessCode);
+
+    btn.disabled = false; btn.textContent = '내 질문 보기';
+
+    if (!list || list.length === 0) {
+
+      qnaState.list = [];
+
+      qnaState.me = null;
+
+      renderQnaList();
+
+      return toast('이름이나 확인 번호가 맞지 않아요');
+
+    }
+
+    qnaState.list = list;
+
+    qnaState.me = { name, accessCode };
+
+    renderQnaList();
+
+    toast(`질문 ${list.length}개를 불러왔어요`);
+
+  } catch (err) {
+
+    btn.disabled = false; btn.textContent = '내 질문 보기';
+
+    toast(err.message);
+
+  }
 
 }
 
@@ -1134,7 +1196,7 @@ function renderQnaList() {
 
   if (qnaState.list.length === 0) {
 
-    area.innerHTML = '<p class="hint">아직 등록된 질문이 없어요.</p>';
+    area.innerHTML = '<p class="hint">아직 불러온 질문이 없어요. 질문을 남기거나, 위에서 이름과 확인 번호를 넣어 확인해보세요.</p>';
 
     return;
 
@@ -1212,6 +1274,16 @@ function openQnaForm() {
 
         </div>
 
+        <div class="field">
+
+          <label>확인 번호 <span class="req">*</span></label>
+
+          <input type="password" id="qna-code" placeholder="4자 이상, 답변을 볼 때 필요해요">
+
+          <div class="field-hint">나중에 답변을 확인할 때 쓰는 번호예요. 이름과 함께 기억해주세요.</div>
+
+        </div>
+
         <button type="button" class="btn btn-primary btn-block btn-lg" id="qnaSubmit" style="margin-top:20px;">등록하기</button>
 
       </div>
@@ -1238,11 +1310,15 @@ async function submitQnaPost(bg) {
 
   const content = $('#qna-content', bg).value.trim();
 
+  const accessCode = $('#qna-code', bg).value.trim();
+
   if (!name) return toast('이름을 입력해주세요');
 
   if (!title) return toast('제목을 입력해주세요');
 
   if (!content) return toast('내용을 입력해주세요');
+
+  if (accessCode.length < 4) return toast('확인 번호는 4자 이상으로 정해주세요');
 
   const btn = $('#qnaSubmit', bg);
 
@@ -1250,15 +1326,19 @@ async function submitQnaPost(bg) {
 
   try {
 
-    await db.createQnaPost(parentState.parentCode, name, title, content);
+    await db.createQnaPost(parentState.parentCode, name, title, content, accessCode);
 
     closeModal();
 
-    toast('질문을 등록했어요');
+    toast('질문을 등록했어요. 선생님만 볼 수 있어요');
 
-    qnaState.list = await db.getQnaList(parentState.parentCode);
+    // 방금 쓴 글을 바로 보여준다.
 
-    renderQnaList();
+    qnaState.me = { name, accessCode };
+
+    qnaState.list = await db.getMyQnaPosts(parentState.parentCode, name, accessCode);
+
+    renderQnaBoard();
 
   } catch (err) {
 

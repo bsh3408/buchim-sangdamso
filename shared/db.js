@@ -53,10 +53,15 @@ export const db = {
     rpc('teacher_cancel_booking', { p_page_id: pageId, p_admin_code: adminCode, p_slot_id: slotId }),
   deleteScheduleDate: (pageId, adminCode, date) =>
     rpc('delete_schedule_date', { p_page_id: pageId, p_admin_code: adminCode, p_date: date }),
-  createQnaPost: (parentCode, authorName, title, content) =>
-    rpc('create_qna_post', { p_parent_code: parentCode, p_author_name: authorName, p_title: title, p_content: content }),
-  getQnaList: (parentCode) =>
-    rpc('get_qna_list', { p_parent_code: parentCode }),
+  createQnaPost: (parentCode, authorName, title, content, accessCode) =>
+    rpc('create_qna_post', {
+      p_parent_code: parentCode, p_author_name: authorName,
+      p_title: title, p_content: content, p_access_code: accessCode,
+    }),
+  getMyQnaPosts: (parentCode, authorName, accessCode) =>
+    rpc('get_my_qna_posts', {
+      p_parent_code: parentCode, p_author_name: authorName, p_access_code: accessCode,
+    }),
   getTeacherQnaList: (pageId, adminCode) =>
     rpc('get_teacher_qna_list', { p_page_id: pageId, p_admin_code: adminCode }),
   answerQnaPost: (pageId, adminCode, postId, answer) =>
