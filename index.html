@@ -2408,9 +2408,9 @@ function renderTeacherDashboard() {
 
         ${STUDENT_CONSULT_ENABLED ? `
 
-        <button type="button" class="home-choice" onclick="openAvailabilityEditor('student')">
+        <button type="button" class="home-choice" onclick="openStudentSchedule()">
 
-          <span class="txt"><strong>학생 상담 시간 설정</strong><span>1교시 전·쉬는시간·점심시간·방과후 중에서 설정하세요.</span></span>
+          <span class="txt"><strong>학생 상담 시간 설정</strong><span>학부모 상담과 따로, 날짜와 시간대를 직접 정하세요.</span></span>
 
         </button>
 
@@ -2525,6 +2525,206 @@ function studentSlotsOf(dateData) {
   return (dateData?.slots || [])
     .filter(sl => sl.audience === 'student' && sl.is_open)
     .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+}
+
+/* ---------------------------------------------------------------
+ * 학생 상담 시간표 (학부모 상담과 완전히 별개)
+ *
+ * 학부모 상담은 교시 구조에서 쉬는시간을 뽑아 쓰지만, 학생 상담은 학교마다
+ * 쉬는시간이 다르고 1교시 전이나 방과후처럼 교시 밖 시간도 쓴다. 그래서
+ * 선생님이 필요한 구간을 직접 적고, 그 안을 상담 시간 단위로 나눈다.
+ * 날짜도 학부모 상담일과 무관하게 따로 고른다.
+ * --------------------------------------------------------------- */
+
+const STUDENT_BAND_NAMES = ['1교시 전', '쉬는시간', '점심시간', '방과후'];
+
+let studentPlan = {
+  dates: [],                 // 'YYYY-MM-DD' 목록
+  consultMinutes: 10,
+  bands: [{ label: '1교시 전', start: '08:20', end: '08:50' }],
+};
+
+function openStudentSchedule() {
+  setView('student-schedule', () => {
+    $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>불러오는 중...</div>`;
+    db.getTeacherSchedule(teacherState.pageId, teacherState.adminCode).then(schedule => {
+      // 이미 만들어둔 학생 상담 날짜가 있으면 그대로 이어서 손볼 수 있게 불러온다.
+      const withStudent = (schedule?.dates || []).filter(d =>
+        (d.slots || []).some(sl => sl.audience === 'student'));
+      studentPlan.dates = withStudent.map(d => d.date);
+      const first = withStudent[0];
+      if (first) {
+        studentPlan.consultMinutes = first.student_duration_minutes || 10;
+        const bands = studentBandsFromSlots((first.slots || []).filter(sl => sl.audience === 'student'),
+                                           studentPlan.consultMinutes);
+        if (bands.length > 0) studentPlan.bands = bands;
+      }
+      renderStudentSchedule();
+    }).catch(err => {
+      $('#main').innerHTML = `<div class="card"><p>${escapeHtml(err.message)}</p></div>`;
+    });
+  });
+}
+
+/** 저장된 슬롯들을 다시 '구간' 형태로 되돌린다. 같은 이름끼리 묶어 가장 이른
+ * 시작과 마지막 시작 + 상담시간을 끝으로 삼는다. */
+function studentBandsFromSlots(slots, consultMinutes) {
+  const byLabel = new Map();
+  for (const sl of slots) {
+    const label = sl.period_label || '상담';
+    if (!byLabel.has(label)) byLabel.set(label, []);
+    byLabel.get(label).push(String(sl.start_time).slice(0, 5));
+  }
+  return [...byLabel.entries()].map(([label, times]) => {
+    times.sort();
+    const [h, m] = times[times.length - 1].split(':').map(Number);
+    const endMin = h * 60 + m + consultMinutes;
+    return {
+      label,
+      start: times[0],
+      end: `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`,
+    };
+  }).sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/** 구간 하나를 상담 시간 단위로 나눴을 때 몇 칸이 나오는지 센다. */
+function bandSlotCount(band, consultMinutes) {
+  const toMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+  const span = toMin(band.end) - toMin(band.start);
+  if (!(span > 0) || !(consultMinutes > 0)) return 0;
+  return Math.floor(span / consultMinutes);
+}
+
+function renderStudentSchedule() {
+  const total = studentPlan.bands.reduce((n, b) => n + bandSlotCount(b, studentPlan.consultMinutes), 0);
+  $('#main').innerHTML = `
+    <div class="card">
+      <h2>학생 상담 시간 설정</h2>
+      <p class="subtitle">학부모 상담과는 따로 정해요. 상담할 날짜와 시간대를 직접 적어주세요.</p>
+
+      <div id="stuCalendar" style="margin-bottom:16px;"></div>
+
+      <div class="field">
+        <label for="stuMinutes">상담 시간 (분)</label>
+        <input type="number" id="stuMinutes" min="5" max="60" step="5" value="${studentPlan.consultMinutes}">
+      </div>
+
+      <label style="display:block;font-size:13px;font-weight:600;margin:18px 0 8px;">상담 시간대</label>
+      <div id="stuBands"></div>
+      <button type="button" class="btn btn-tonal btn-block" id="stuAddBand" style="margin-top:8px;">시간대 추가</button>
+
+      <p class="hint" style="margin-top:14px;">고른 날짜마다 상담 칸 ${total}개가 만들어져요.</p>
+      <button class="btn btn-primary btn-block btn-lg" id="stuSave" style="margin-top:8px;">고른 날짜에 저장</button>
+    </div>
+  `;
+
+  renderCalendar($('#stuCalendar'), {
+    selectedDates: studentPlan.dates,
+    onToggleDate: (date) => {
+      const i = studentPlan.dates.indexOf(date);
+      if (i >= 0) studentPlan.dates.splice(i, 1); else studentPlan.dates.push(date);
+      renderStudentSchedule();
+    },
+  });
+
+  renderStudentBands();
+
+  $('#stuMinutes').addEventListener('change', () => {
+    const v = Number($('#stuMinutes').value);
+    studentPlan.consultMinutes = (v >= 5 && v <= 60) ? v : 10;
+    renderStudentSchedule();
+  });
+  $('#stuAddBand').addEventListener('click', () => {
+    studentPlan.bands.push({ label: '쉬는시간', start: '10:20', end: '10:30' });
+    renderStudentSchedule();
+  });
+  $('#stuSave').addEventListener('click', saveStudentSchedule);
+}
+
+function renderStudentBands() {
+  const area = $('#stuBands');
+  area.innerHTML = studentPlan.bands.map((b, i) => `
+    <div class="row" style="align-items:flex-end;margin-bottom:8px;">
+      <div class="field" style="flex:2;">
+        <label>이름</label>
+        <select class="stu-band-label" data-i="${i}">
+          ${STUDENT_BAND_NAMES.map(n => `<option value="${escapeHtml(n)}"${n === b.label ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+          ${STUDENT_BAND_NAMES.includes(b.label) ? '' : `<option value="${escapeHtml(b.label)}" selected>${escapeHtml(b.label)}</option>`}
+        </select>
+      </div>
+      <div class="field"><label>시작</label><input type="time" class="stu-band-start" data-i="${i}" value="${b.start}"></div>
+      <div class="field"><label>종료</label><input type="time" class="stu-band-end" data-i="${i}" value="${b.end}"></div>
+      <div class="field" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <button type="button" class="btn btn-tonal btn-field-height stu-band-del" data-i="${i}">빼기</button>
+      </div>
+    </div>
+    <div class="hint" style="margin:-4px 0 12px;">${bandSlotCount(b, studentPlan.consultMinutes)}칸</div>
+  `).join('') || '<p class="hint">시간대를 하나 이상 추가해주세요.</p>';
+
+  $$('.stu-band-label').forEach(el => el.addEventListener('change', () => {
+    studentPlan.bands[Number(el.dataset.i)].label = el.value;
+  }));
+  $$('.stu-band-start').forEach(el => el.addEventListener('change', () => {
+    studentPlan.bands[Number(el.dataset.i)].start = el.value;
+    renderStudentSchedule();
+  }));
+  $$('.stu-band-end').forEach(el => el.addEventListener('change', () => {
+    studentPlan.bands[Number(el.dataset.i)].end = el.value;
+    renderStudentSchedule();
+  }));
+  $$('.stu-band-del').forEach(el => el.addEventListener('click', () => {
+    studentPlan.bands.splice(Number(el.dataset.i), 1);
+    renderStudentSchedule();
+  }));
+}
+
+async function saveStudentSchedule() {
+  if (studentPlan.dates.length === 0) return toast('상담할 날짜를 골라주세요');
+  if (studentPlan.bands.length === 0) return toast('상담 시간대를 하나 이상 추가해주세요');
+
+  for (const b of studentPlan.bands) {
+    if (!b.start || !b.end || b.start >= b.end) {
+      return toast(`${b.label} 시간대의 시작·종료 시각을 확인해주세요`);
+    }
+    if (bandSlotCount(b, studentPlan.consultMinutes) === 0) {
+      return toast(`${b.label} 시간대가 상담 시간보다 짧아요`);
+    }
+  }
+
+  const slots = [];
+  for (const b of studentPlan.bands) {
+    buildAfterschoolSlots({
+      startTime: b.start, endTime: b.end,
+      consultMinutes: studentPlan.consultMinutes, label: b.label,
+    }).forEach(s => slots.push({ ...s, is_open: true, mode: 'in_person' }));
+  }
+
+  // 같은 시각이 두 구간에 겹쳐 들어가면 저장이 막히므로 미리 걸러낸다.
+  const seen = new Set();
+  const unique = slots.filter(s => {
+    if (seen.has(s.start_time)) return false;
+    seen.add(s.start_time);
+    return true;
+  });
+  if (unique.length !== slots.length) {
+    return toast('시간대끼리 겹쳐요. 시각을 다시 확인해주세요');
+  }
+
+  const btn = $('#stuSave');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    for (const date of [...studentPlan.dates].sort()) {
+      await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, date,
+                             'high', studentPlan.consultMinutes, unique, 'student');
+    }
+    toast(`${studentPlan.dates.length}개 날짜에 저장했어요`);
+    await loadTeacherSchedule();
+    renderTeacherDashboard();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '고른 날짜에 저장';
+    toast(err.message);
+  }
 }
 
 function openStudentAssign() {
@@ -2876,7 +3076,7 @@ function renderAvailabilityEditor() {
       <h2>${isStudent ? '학생 상담 시간 설정' : '상담 가능 시간 설정'}</h2>
 
       <p class="subtitle">${isStudent
-        ? '학생 상담은 교과시간엔 할 수 없어요. 학부모 상담 시간표에 이미 있는 날짜 중에서, 1교시 전·쉬는시간·점심시간·방과후로 상담 시간을 정해요.'
+        ? '학생 상담은 교과시간엔 할 수 없어요. 1교시 전·쉬는시간·점심시간·방과후로 상담 시간을 정해요.'
         : '상담할 날짜를 선택해주세요. 아래에서 기본 시간을 정한 뒤, 요일별로 상담 가능한 시간을 설정할 수 있어요.'}</p>
 
       <div id="rangeCalendar"></div>
@@ -3594,7 +3794,7 @@ function renderAvailabilityPatternEditor() {
 
         </div>
 
-        <p class="hint" style="margin:8px 0 14px;">학생 상담은 교과시간엔 할 수 없어서, 학부모 시간표에 이미 있는 쉬는시간·점심시간 안에서만 만들어요. 1교시 전과 방과후 상담은 다음 화면(요일별 시간표)에서 따로 추가할 수 있어요.</p>
+        <p class="hint" style="margin:8px 0 14px;">학생 상담은 교과시간엔 할 수 없어요. 1교시 전·쉬는시간·점심시간·방과후 중에서 시간을 정해요.</p>
 
         `}
 
@@ -4938,6 +5138,7 @@ window.openTeacherQna = openTeacherQna;
 window.openChangePassword = openChangePassword;
 window.openSecurityQuestion = openSecurityQuestion;
 window.openStudentAssign = openStudentAssign;
+window.openStudentSchedule = openStudentSchedule;
 
 
 
