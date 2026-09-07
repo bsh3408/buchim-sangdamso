@@ -3028,17 +3028,64 @@ function readPeriodCountFormIntoPattern(pattern, idPrefix) {
 
 
 
+/** 지금 편집 중인 쪽에 이미 잡혀 있는 방과후 구간을 돌려준다. 방과후 슬롯은
+ * 상담시간 단위로 잘게 쪼개져 저장되므로, 가장 이른 시작과 가장 늦은 끝을 모아
+ * '몇 시부터 몇 시까지'라는 원래 구간으로 되돌린다. 없으면 null. */
+function currentAfterschoolRange() {
+  const pattern = activePattern();
+  const after = (pattern?.extraSlots || []).filter(s => s.period_label === '방과후');
+  if (after.length === 0) return null;
+  const starts = after.map(s => s.start_time).sort();
+  // 슬롯에는 시작 시각만 있으므로, 마지막 슬롯 시작에 상담 시간을 더해 끝을 구한다.
+  const consultMinutes = pattern.duration_minutes || (teacherState.editingAudience === 'student' ? 10 : 20);
+  const [h, m] = starts[starts.length - 1].split(':').map(Number);
+  const endMinutes = h * 60 + m + consultMinutes;
+  const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
+  return { startTime: starts[0], endTime, count: after.length };
+}
+
+/** 방과후 폼을 열 때 지금 잡혀 있는 구간을 입력칸에 채워 넣고, 버튼 문구와
+ * 없애기 버튼 노출을 현재 상태에 맞춘다. */
+function syncAfterschoolForm() {
+  const range = currentAfterschoolRange();
+  const toggle = $('#afterschoolToggle');
+  const addBtn = $('#afterAdd');
+  const removeBtn = $('#afterRemove');
+  const hint = $('#afterschoolHint');
+  if (toggle) toggle.textContent = range ? '방과후 상담 시간 바꾸기' : '방과후 상담 추가';
+  if (addBtn) addBtn.textContent = range ? '바꾸기' : '추가';
+  if (removeBtn) removeBtn.style.display = range ? '' : 'none';
+  if (hint) {
+    hint.textContent = range && range.endTime
+      ? `지금은 ${range.startTime}부터 ${range.endTime}까지예요. 시간을 바꾸면 이 구간을 새로 만들어요.`
+      : '상담할 시작·종료 시각을 정하면 상담시간 단위로 나눠 만들어요.';
+  }
+  if (range) {
+    const st = $('#afterStart'); const en = $('#afterEnd');
+    if (st) st.value = range.startTime;
+    if (en && range.endTime) en.value = range.endTime;
+  }
+}
+
 const AFTERSCHOOL_FORM_HTML = `
 
   <button type="button" class="btn btn-tonal btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
 
-  <div id="afterschoolForm" class="row" style="display:none;margin-bottom:10px;">
+  <div id="afterschoolPanel" style="display:none;margin-bottom:10px;">
 
-    <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+    <div id="afterschoolHint" class="hint" style="margin:0 0 8px;"></div>
 
-    <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+    <div id="afterschoolForm" class="row">
 
-    <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
+      <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+
+      <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
+
+    </div>
+
+    <button type="button" class="btn btn-tonal btn-block" id="afterRemove" style="display:none;margin-top:8px;">방과후 상담 없애기</button>
 
   </div>
 
@@ -3054,21 +3101,47 @@ const AFTERSCHOOL_FORM_HTML = `
 
 function wireAfterschoolForm(onAdded) {
 
+  syncAfterschoolForm();
+
   $('#afterschoolToggle').addEventListener('click', () => {
 
-    const form = $('#afterschoolForm');
+    const panel = $('#afterschoolPanel');
 
-    const opening = form.style.display === 'none';
+    const opening = panel.style.display === 'none';
 
-    form.style.display = opening ? 'flex' : 'none';
+    panel.style.display = opening ? '' : 'none';
 
     if (opening) {
+
+      syncAfterschoolForm();
 
       const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none';
 
       const periodCountForm = $('#periodCountSettingsForm'); if (periodCountForm) periodCountForm.style.display = 'none';
 
     }
+
+  });
+
+  $('#afterRemove').addEventListener('click', () => {
+
+    const pattern = activePattern();
+
+    const before = (pattern.extraSlots || []).length;
+
+    pattern.extraSlots = (pattern.extraSlots || []).filter(s => s.period_label !== '방과후');
+
+    const removed = before - pattern.extraSlots.length;
+
+    if (removed === 0) return toast('없앨 방과후 상담이 없어요');
+
+    $('#afterschoolPanel').style.display = 'none';
+
+    toast('방과후 상담을 없앴어요');
+
+    syncAfterschoolForm();
+
+    onAdded?.();
 
   });
 
@@ -3094,19 +3167,25 @@ function wireAfterschoolForm(onAdded) {
 
     const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
 
+    if (newSlots.length === 0) return toast('상담 시간보다 긴 구간으로 정해주세요');
+
     if (!pattern.extraSlots) pattern.extraSlots = [];
 
-    const existingStarts = new Set(pattern.extraSlots.map(s => s.start_time));
+    // 방과후는 '몇 시부터 몇 시까지' 하나의 구간으로 다룬다. 그래서 이미 잡혀 있던
 
-    const toAdd = newSlots.filter(s => !existingStarts.has(s.start_time));
+    // 방과후 슬롯은 지우고 새 구간으로 다시 만든다. 그래야 시간대를 바꿀 수 있다.
 
-    if (toAdd.length === 0) return toast('이미 같은 시간대가 있어요');
+    const had = pattern.extraSlots.some(s => s.period_label === '방과후');
 
-    pattern.extraSlots.push(...toAdd);
+    pattern.extraSlots = pattern.extraSlots.filter(s => s.period_label !== '방과후');
 
-    $('#afterschoolForm').style.display = 'none';
+    pattern.extraSlots.push(...newSlots);
 
-    toast(`방과후 상담 ${toAdd.length}개를 추가했어요`);
+    $('#afterschoolPanel').style.display = 'none';
+
+    toast(had ? `방과후 상담을 ${startTime}~${endTime}로 바꿨어요` : `방과후 상담 ${newSlots.length}개를 추가했어요`);
+
+    syncAfterschoolForm();
 
     onAdded?.();
 
@@ -3360,13 +3439,21 @@ function renderWeekdayEditor() {
 
       ` : ''}
 
-      <div id="afterschoolForm" class="row" style="display:none;margin-bottom:16px;">
+      <div id="afterschoolPanel" style="display:none;margin-bottom:16px;">
 
-        <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+        <div id="afterschoolHint" class="hint" style="margin:0 0 8px;"></div>
 
-        <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+        <div id="afterschoolForm" class="row">
 
-        <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
+          <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
+
+          <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
+
+          <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
+
+        </div>
+
+        <button type="button" class="btn btn-tonal btn-block" id="afterRemove" style="display:none;margin-top:8px;">방과후 상담 없애기</button>
 
       </div>
 
@@ -3396,7 +3483,7 @@ function renderWeekdayEditor() {
 
         const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none';
 
-        const afterForm = $('#afterschoolForm'); if (afterForm) afterForm.style.display = 'none';
+        const afterPanel = $('#afterschoolPanel'); if (afterPanel) afterPanel.style.display = 'none';
 
       }
 
@@ -3426,7 +3513,7 @@ function renderWeekdayEditor() {
 
       if (opening) {
 
-        const afterForm = $('#afterschoolForm'); if (afterForm) afterForm.style.display = 'none';
+        const afterPanel = $('#afterschoolPanel'); if (afterPanel) afterPanel.style.display = 'none';
 
         const periodCountForm = $('#periodCountSettingsForm'); if (periodCountForm) periodCountForm.style.display = 'none';
 
