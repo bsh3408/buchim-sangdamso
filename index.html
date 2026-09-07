@@ -2352,13 +2352,15 @@ function renderTeacherDashboard() {
 
           <div class="teacher-hello-avatar">${escapeHtml(t.teacherName.slice(0, 1))}</div>
 
-          <div>
+          <div style="flex:1;">
 
             <p class="teacher-hello-greet">${escapeHtml(t.teacherName)} 선생님, 환영합니다</p>
 
             <h2 style="margin:0;">${escapeHtml(t.school)} ${gradeClassLabel(t.grade, t.teacherClass)}</h2>
 
           </div>
+
+          <button type="button" class="btn btn-tonal" style="flex:0 0 auto;white-space:nowrap;" onclick="openMyAccount()">개인정보 수정</button>
 
         </div>
 
@@ -2400,45 +2402,19 @@ function renderTeacherDashboard() {
 
       <div class="home-choices">
 
-        <button type="button" class="home-choice" onclick="openAvailabilityEditor('parent')">
+        <button type="button" class="home-choice" onclick="openParentMenu()">
 
-          <span class="txt"><strong>학부모 상담 시간 설정</strong><span>날짜, 시간대와 상담 방법을 설정하세요.</span></span>
+          <span class="txt"><strong>학부모 상담</strong><span>상담 시간 설정, 예약 현황, 질문 게시판</span></span>
 
         </button>
 
         ${STUDENT_CONSULT_ENABLED ? `
 
-        <button type="button" class="home-choice" onclick="openStudentSchedule()">
+        <button type="button" class="home-choice" onclick="openStudentMenu()">
 
-          <span class="txt"><strong>학생 상담 시간 설정</strong><span>학부모 상담과 따로, 날짜와 시간대를 직접 정하세요.</span></span>
-
-        </button>
-
-        <button type="button" class="home-choice" onclick="openStudentAssign()">
-
-          <span class="txt"><strong>학생 명단·배정</strong><span>명단을 넣고 상담 시간을 나눠주세요.</span></span>
+          <span class="txt"><strong>학생 상담</strong><span>상담 시간 설정, 명단, 배정, 예약 현황</span></span>
 
         </button>` : ''}
-
-        <button type="button" class="home-choice" onclick="openBookingsList()">
-
-          <span class="txt"><strong>예약 현황</strong><span>신청 내용을 확인하고 예약을 관리하세요.</span></span>
-
-        </button>
-
-        <button type="button" class="home-choice" onclick="openTeacherQna()">
-
-          <span class="txt"><strong>질문 게시판</strong><span>${STUDENT_CONSULT_ENABLED ? '학부모·학생' : '학부모'} 질문에 답변하세요.</span></span>
-
-        </button>
-
-        <button type="button" class="home-choice" onclick="openChangePassword()">
-          <span class="txt"><strong>비밀번호 변경</strong><span>로그인에 쓰는 비밀번호를 바꾸세요.</span></span>
-        </button>
-
-        <button type="button" class="home-choice" onclick="openSecurityQuestion()">
-          <span class="txt"><strong>확인 질문 설정</strong><span>비밀번호를 잊었을 때 본인을 확인할 질문을 정하세요.</span></span>
-        </button>
 
       </div>
 
@@ -2464,6 +2440,74 @@ function renderTeacherDashboard() {
 
   });
 
+}
+
+/** 대시보드에서 갈라지는 하위 메뉴들. 한 화면에 카드가 너무 많아지지 않도록
+ * 학부모 상담과 학생 상담을 갈라 두고, 계정 설정은 인사말 옆으로 뺐다. */
+function submenuHtml(title, subtitle, items) {
+  return `
+    <div class="card">
+      <h2>${escapeHtml(title)}</h2>
+      <p class="subtitle">${escapeHtml(subtitle)}</p>
+    </div>
+    <div class="home-choices">
+      ${items.map(it => `
+        <button type="button" class="home-choice" data-go="${it.go}">
+          <span class="txt"><strong>${escapeHtml(it.title)}</strong><span>${escapeHtml(it.desc)}</span></span>
+        </button>`).join('')}
+    </div>
+  `;
+}
+
+function wireSubmenu(handlers) {
+  $$('[data-go]').forEach(btn => {
+    btn.addEventListener('click', () => handlers[btn.dataset.go]?.());
+  });
+}
+
+function openParentMenu() {
+  setView('parent-menu', () => {
+    $('#main').innerHTML = submenuHtml('학부모 상담', '상담 시간을 정하고 예약과 질문을 관리해요.', [
+      { go: 'time', title: '상담 시간 설정', desc: '날짜, 시간대와 상담 방법을 정하세요.' },
+      { go: 'bookings', title: '예약 현황', desc: '학부모가 신청한 내용을 확인하고 관리하세요.' },
+      { go: 'qna', title: '질문 게시판', desc: '학부모가 남긴 질문에 답변하세요.' },
+    ]);
+    wireSubmenu({
+      time: () => openAvailabilityEditor('parent'),
+      bookings: () => openBookingsList('parent'),
+      qna: () => openTeacherQna(),
+    });
+  });
+}
+
+function openStudentMenu() {
+  setView('student-menu', () => {
+    $('#main').innerHTML = submenuHtml('학생 상담', '학부모 상담과는 따로 운영해요.', [
+      { go: 'time', title: '상담 시간 설정', desc: '날짜와 시간대를 직접 정하세요.' },
+      { go: 'roster', title: '학생 명단', desc: '반 학생 명단을 넣어두세요.' },
+      { go: 'assign', title: '배정', desc: '명단을 상담 시간에 나눠주세요.' },
+      { go: 'bookings', title: '예약 현황', desc: '학생 상담 예약을 확인하고 관리하세요.' },
+    ]);
+    wireSubmenu({
+      time: () => openStudentSchedule(),
+      roster: () => openStudentAssign('roster'),
+      assign: () => openStudentAssign('assign'),
+      bookings: () => openBookingsList('student'),
+    });
+  });
+}
+
+function openMyAccount() {
+  setView('my-account', () => {
+    $('#main').innerHTML = submenuHtml('개인정보 수정', '로그인과 본인 확인에 쓰는 정보를 바꿔요.', [
+      { go: 'password', title: '비밀번호 변경', desc: '로그인에 쓰는 비밀번호를 바꾸세요.' },
+      { go: 'question', title: '확인 질문 설정', desc: '비밀번호를 잊었을 때 본인을 확인할 질문을 정하세요.' },
+    ]);
+    wireSubmenu({
+      password: () => openChangePassword(),
+      question: () => openSecurityQuestion(),
+    });
+  });
 }
 
 function openChangePassword() {
@@ -2500,7 +2544,7 @@ async function doChangePassword() {
   }
 }
 
-let assignState = { roster: [], dates: [], selectedDate: null };
+let assignState = { roster: [], dates: [], selectedDate: null, focus: 'roster' };
 
 /** 명단 입력칸의 글을 { student_number, student_name } 목록으로 바꾼다.
  * 한 줄에 한 명이고, 번호와 이름은 빈칸이나 탭으로 나눈다. 엑셀에서 두 열을
@@ -2727,8 +2771,9 @@ async function saveStudentSchedule() {
   }
 }
 
-function openStudentAssign() {
-  setView('student-assign', () => {
+function openStudentAssign(focus = 'roster') {
+  assignState.focus = focus;
+  setView('student-assign-' + focus, () => {
     $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>불러오는 중...</div>`;
     Promise.all([
       db.getStudentRoster(teacherState.pageId, teacherState.adminCode),
@@ -2746,23 +2791,26 @@ function openStudentAssign() {
 
 function renderStudentAssign() {
   const roster = assignState.roster;
+  const onRoster = assignState.focus === 'roster';
   $('#main').innerHTML = `
     <div class="card">
-      <h2>학생 명단·배정</h2>
+      ${onRoster ? `
+      <h2>학생 명단</h2>
       <p class="subtitle">명단을 넣어두면 상담 시간을 한 번에 나눠줄 수 있어요.</p>
 
       <div class="field">
         <label for="rosterText">학생 명단 (${roster.length}명)</label>
-        <textarea id="rosterText" rows="8" placeholder="1 김민준&#10;2 이서연&#10;3 박지호">${escapeHtml(rosterToText(roster))}</textarea>
+        <textarea id="rosterText" rows="10" placeholder="1 김민준&#10;2 이서연&#10;3 박지호">${escapeHtml(rosterToText(roster))}</textarea>
         <div class="field-hint">한 줄에 한 명씩, 번호와 이름을 빈칸으로 띄어 적어주세요. 엑셀에서 번호·이름 두 칸을 복사해 그대로 붙여넣어도 됩니다.</div>
       </div>
       <button type="button" class="btn btn-secondary btn-block" id="rosterSave">명단 저장하기</button>
-
-      <hr style="border:none;border-top:1px solid var(--border);margin:24px 0;">
-
-      <h2 style="font-size:20px;">날짜별 상담 시간 배정</h2>
-      ${assignState.dates.length === 0
-        ? '<p class="hint">아직 학생 상담 시간이 없어요. 먼저 “학생 상담 시간 설정”에서 시간을 만들어주세요.</p>'
+      ` : `
+      <h2>배정</h2>
+      <p class="subtitle">명단에 있는 ${roster.length}명을 상담 시간에 나눠줘요.</p>
+      ${roster.length === 0
+        ? '<p class="hint">먼저 “학생 명단”에서 명단을 넣어주세요.</p>'
+        : assignState.dates.length === 0
+        ? '<p class="hint">아직 학생 상담 시간이 없어요. 먼저 “상담 시간 설정”에서 시간을 만들어주세요.</p>'
         : `<div class="field">
              <label for="assignDate">날짜</label>
              <select id="assignDate">
@@ -2771,10 +2819,12 @@ function renderStudentAssign() {
              </select>
            </div>
            <div id="assignArea"></div>`}
+      `}
     </div>
   `;
 
-  $('#rosterSave').addEventListener('click', saveRoster);
+  const saveBtn = $('#rosterSave');
+  if (saveBtn) saveBtn.addEventListener('click', saveRoster);
   const sel = $('#assignDate');
   if (sel) {
     sel.addEventListener('change', () => {
@@ -4982,9 +5032,11 @@ async function maybePublish() {
 
 
 
-function openBookingsList() {
+function openBookingsList(audience = 'parent') {
 
-  setView('teacher-bookings', () => {
+  bookingsAudience = audience;
+
+  setView('teacher-bookings-' + audience, () => {
 
     $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>예약 현황 로드 중...</div>`;
 
@@ -5000,6 +5052,8 @@ function openBookingsList() {
 
 
 
+let bookingsAudience = 'parent';
+
 function renderBookingsList() {
 
   const today = formatLocalDate(new Date());
@@ -5010,7 +5064,11 @@ function renderBookingsList() {
 
     for (const s of entry.slots) {
 
-      if (s.booking) bookings.push({ date, slot_id: s.slot_id, start_time: s.start_time, audience: s.audience, ...s.booking });
+      if (s.booking && s.audience === bookingsAudience) {
+
+        bookings.push({ date, slot_id: s.slot_id, start_time: s.start_time, audience: s.audience, ...s.booking });
+
+      }
 
     }
 
@@ -5068,7 +5126,7 @@ function renderBookingsList() {
 
     <div class="card">
 
-      <h2>예약 현황</h2>
+      <h2>${bookingsAudience === 'student' ? '학생' : '학부모'} 예약 현황</h2>
 
       <h3 style="margin-top:10px;">다가오는 예약</h3>
 
@@ -5139,6 +5197,9 @@ window.openChangePassword = openChangePassword;
 window.openSecurityQuestion = openSecurityQuestion;
 window.openStudentAssign = openStudentAssign;
 window.openStudentSchedule = openStudentSchedule;
+window.openParentMenu = openParentMenu;
+window.openStudentMenu = openStudentMenu;
+window.openMyAccount = openMyAccount;
 
 
 
