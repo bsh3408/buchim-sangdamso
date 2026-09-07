@@ -20,10 +20,10 @@ async function rpc(fnName, args) {
 }
 
 export const db = {
-  getOrCreateTeacher: (name, adminCode, school, schoolLevel, grade, teacherClass) =>
+  getOrCreateTeacher: (name, adminCode, school, schoolLevel, grade, teacherClass, email) =>
     rpc('get_or_create_teacher', {
       p_name: name, p_admin_code: adminCode, p_school: school, p_school_level: schoolLevel,
-      p_grade: grade, p_class: teacherClass,
+      p_grade: grade, p_class: teacherClass, p_email: email || null,
     }),
   teacherLogin: (name, adminCode) =>
     rpc('teacher_login', { p_name: name, p_admin_code: adminCode }),
@@ -61,4 +61,15 @@ export const db = {
     rpc('answer_qna_post', { p_page_id: pageId, p_admin_code: adminCode, p_post_id: postId, p_answer: answer }),
   deleteQnaPost: (pageId, adminCode, postId) =>
     rpc('delete_qna_post', { p_page_id: pageId, p_admin_code: adminCode, p_post_id: postId }),
+  changeOwnPassword: (pageId, adminCode, newPassword) =>
+    rpc('change_own_password', { p_page_id: pageId, p_admin_code: adminCode, p_new_password: newPassword }),
+  requestPasswordReset: (name, schoolLevel, school, grade, teacherClass) =>
+    rpc('request_password_reset', {
+      p_name: name, p_school_level: schoolLevel, p_school: school, p_grade: grade, p_class: teacherClass,
+    }),
+  confirmPasswordReset: (name, schoolLevel, school, grade, teacherClass, code, newPassword) =>
+    rpc('confirm_password_reset', {
+      p_name: name, p_school_level: schoolLevel, p_school: school, p_grade: grade, p_class: teacherClass,
+      p_code: code, p_new_password: newPassword,
+    }),
 };
