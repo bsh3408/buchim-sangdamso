@@ -103,7 +103,7 @@ export function buildGapSlots({
   return slots;
 }
 
-export function buildAfterschoolSlots({ startTime, endTime, consultMinutes }) {
+export function buildAfterschoolSlots({ startTime, endTime, consultMinutes, label = '방과후' }) {
   return sliceIntoSlots(toMinutes(startTime), toMinutes(endTime), consultMinutes)
-    .map(s => ({ ...s, period_label: '방과후' }));
+    .map(s => ({ ...s, period_label: label }));
 }

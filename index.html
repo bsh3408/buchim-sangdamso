@@ -81,7 +81,7 @@ const SCHOOL_LEVEL_SUFFIX = { elementary: '초등학교', middle: '중학교', h
 /** 학생 상담 기능을 켤지 정하는 스위치. 지금은 학부모 상담만 연다.
     다시 열 때는 이 값을 true로 바꾸기만 하면 된다. 데이터베이스와
     저장된 학생 상담 시간표는 그대로 두었으므로 지워지지 않는다. */
-const STUDENT_CONSULT_ENABLED = false;
+const STUDENT_CONSULT_ENABLED = true;
 
 /** 비밀번호를 잊었을 때 본인을 확인하는 질문. 데이터베이스에는 id만 저장하므로
     id의 의미를 절대 바꾸면 안 된다. 질문은 뒤에만 추가하고, 쓰지 않을 질문도
@@ -383,7 +383,7 @@ function renderHome() {
 
             <button type="button" class="noticeboard-sub-entry noticeboard-student" onclick="startStudent()">
 
-              <strong>학생 상담</strong><small>쉬는시간·점심시간·방과후에</small>
+              <strong>학생 상담</strong><small>1교시 전·쉬는시간·점심시간·방과후에</small>
 
             </button>` : ''}
 
@@ -2340,7 +2340,7 @@ function renderTeacherDashboard() {
 
         <button type="button" class="home-choice" onclick="openAvailabilityEditor('student')">
 
-          <span class="txt"><strong>학생 상담 시간 설정</strong><span>쉬는시간·점심시간·방과후 중에서 설정하세요.</span></span>
+          <span class="txt"><strong>학생 상담 시간 설정</strong><span>1교시 전·쉬는시간·점심시간·방과후 중에서 설정하세요.</span></span>
 
         </button>` : ''}
 
@@ -2509,7 +2509,7 @@ function buildStudentShareMessage(t) {
 
   return `안녕하세요, ${t.school} ${plainGradeClass(t.grade, t.teacherClass)} 담임 ${t.teacherName}입니다.
 
-쉬는시간·점심시간·방과후 중에 선생님과 이야기하고 싶으면, 아래 링크에서 편한 시간을 골라 신청해주세요.
+1교시 전·쉬는시간·점심시간·방과후 중에 선생님과 이야기하고 싶으면, 아래 링크에서 편한 시간을 골라 신청해주세요.
 
 📌 ${link}
 
@@ -2587,7 +2587,7 @@ function renderAvailabilityEditor() {
       <h2>${isStudent ? '학생 상담 시간 설정' : '상담 가능 시간 설정'}</h2>
 
       <p class="subtitle">${isStudent
-        ? '학생 상담은 교과시간엔 할 수 없어요. 학부모 상담 시간표에 이미 있는 날짜 중에서, 쉬는시간·점심시간·방과후로 상담 시간을 정해요.'
+        ? '학생 상담은 교과시간엔 할 수 없어요. 학부모 상담 시간표에 이미 있는 날짜 중에서, 1교시 전·쉬는시간·점심시간·방과후로 상담 시간을 정해요.'
         : '상담할 날짜를 선택해주세요. 아래에서 기본 시간을 정한 뒤, 요일별로 상담 가능한 시간을 설정할 수 있어요.'}</p>
 
       <div id="rangeCalendar"></div>
@@ -3108,31 +3108,43 @@ function readPeriodCountFormIntoPattern(pattern, idPrefix) {
 
 
 
-/** 지금 편집 중인 쪽에 이미 잡혀 있는 방과후 구간을 돌려준다. 방과후 슬롯은
- * 상담시간 단위로 잘게 쪼개져 저장되므로, 가장 이른 시작과 가장 늦은 끝을 모아
+/** 교시 밖에 따로 잡는 상담 시간대. 1교시 전과 방과후 두 가지이며, 화면 구성이
+ * 같아서 하나의 코드로 다룬다. key는 화면 요소 id의 접두사, label은 슬롯에 붙는
+ * 이름이라 이미 저장된 자료와 맞물린다 — 절대 바꾸면 안 된다. */
+const EXTRA_SLOT_KINDS = [
+  { key: 'before', label: '1교시 전', defaultStart: '08:20', defaultEnd: '08:50' },
+  { key: 'after', label: '방과후', defaultStart: '16:30', defaultEnd: '17:30' },
+];
+
+function extraKind(key) {
+  return EXTRA_SLOT_KINDS.find(k => k.key === key);
+}
+
+/** 지금 편집 중인 쪽에 이미 잡혀 있는 구간을 돌려준다. 이 슬롯들은 상담시간 단위로
+ * 잘게 쪼개져 저장되므로, 가장 이른 시작과 마지막 시작에 상담시간을 더한 값을 모아
  * '몇 시부터 몇 시까지'라는 원래 구간으로 되돌린다. 없으면 null. */
-function currentAfterschoolRange() {
+function currentExtraRange(label) {
   const pattern = activePattern();
-  const after = (pattern?.extraSlots || []).filter(s => s.period_label === '방과후');
-  if (after.length === 0) return null;
-  const starts = after.map(s => s.start_time).sort();
-  // 슬롯에는 시작 시각만 있으므로, 마지막 슬롯 시작에 상담 시간을 더해 끝을 구한다.
+  const found = (pattern?.extraSlots || []).filter(s => s.period_label === label);
+  if (found.length === 0) return null;
+  const starts = found.map(s => s.start_time).sort();
   const consultMinutes = pattern.duration_minutes || (teacherState.editingAudience === 'student' ? 10 : 20);
   const [h, m] = starts[starts.length - 1].split(':').map(Number);
   const endMinutes = h * 60 + m + consultMinutes;
   const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
-  return { startTime: starts[0], endTime, count: after.length };
+  return { startTime: starts[0], endTime, count: found.length };
 }
 
-/** 방과후 폼을 열 때 지금 잡혀 있는 구간을 입력칸에 채워 넣고, 버튼 문구와
- * 없애기 버튼 노출을 현재 상태에 맞춘다. */
-function syncAfterschoolForm() {
-  const range = currentAfterschoolRange();
-  const toggle = $('#afterschoolToggle');
-  const addBtn = $('#afterAdd');
-  const removeBtn = $('#afterRemove');
-  const hint = $('#afterschoolHint');
-  if (toggle) toggle.textContent = range ? '방과후 상담 시간 바꾸기' : '방과후 상담 추가';
+/** 폼을 열 때 지금 잡혀 있는 구간을 입력칸에 채우고, 버튼 문구와 없애기 버튼
+ * 노출을 현재 상태에 맞춘다. */
+function syncExtraForm(key) {
+  const kind = extraKind(key);
+  const range = currentExtraRange(kind.label);
+  const toggle = $(`#x-${key}-toggle`);
+  const addBtn = $(`#x-${key}-add`);
+  const removeBtn = $(`#x-${key}-remove`);
+  const hint = $(`#x-${key}-hint`);
+  if (toggle) toggle.textContent = range ? `${kind.label} 상담 시간 바꾸기` : `${kind.label} 상담 추가`;
   if (addBtn) addBtn.textContent = range ? '바꾸기' : '추가';
   if (removeBtn) removeBtn.style.display = range ? '' : 'none';
   if (hint) {
@@ -3141,149 +3153,101 @@ function syncAfterschoolForm() {
       : '상담할 시작·종료 시각을 정하면 상담시간 단위로 나눠 만들어요.';
   }
   if (range) {
-    const st = $('#afterStart'); const en = $('#afterEnd');
+    const st = $(`#x-${key}-start`); const en = $(`#x-${key}-end`);
     if (st) st.value = range.startTime;
     if (en && range.endTime) en.value = range.endTime;
   }
 }
 
-const AFTERSCHOOL_FORM_HTML = `
-
-  <button type="button" class="btn btn-tonal btn-block" id="afterschoolToggle" style="margin:8px 0;">방과후 상담 추가</button>
-
-  <div id="afterschoolPanel" style="display:none;margin-bottom:10px;">
-
-    <div id="afterschoolHint" class="hint" style="margin:0 0 8px;"></div>
-
-    <div id="afterschoolForm" class="row">
-
-      <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
-
-      <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
-
-      <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
-
+/** 한 종류의 폼 HTML. block이 true면 토글 버튼이 한 줄을 다 쓴다(1단계 화면). */
+function extraFormHtml(key, block) {
+  const kind = extraKind(key);
+  return `
+  <button type="button" class="btn btn-tonal${block ? ' btn-block' : ''}" id="x-${key}-toggle"${block ? ' style="margin:8px 0;"' : ''}>${kind.label} 상담 추가</button>
+  <div id="x-${key}-panel" style="display:none;margin-bottom:${block ? '10' : '16'}px;">
+    <div id="x-${key}-hint" class="hint" style="margin:0 0 8px;"></div>
+    <div class="row">
+      <div class="field"><label>시작</label><input type="time" id="x-${key}-start" value="${kind.defaultStart}"></div>
+      <div class="field"><label>종료</label><input type="time" id="x-${key}-end" value="${kind.defaultEnd}"></div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="x-${key}-add">추가</button></div>
     </div>
-
-    <button type="button" class="btn btn-tonal btn-block" id="afterRemove" style="display:none;margin-top:8px;">방과후 상담 없애기</button>
-
-  </div>
-
-`;
-
-
-
-/** AFTERSCHOOL_FORM_HTML로 그린 토글·추가 버튼을 연결한다. onAdded는 추가된 뒤 그리드를
-
- * 다시 그려야 하는 화면(2단계)에서만 넘긴다 — 1단계는 아직 그리드가 없어서 안 넘긴다. 열 때
-
- * 점심시간 상세설정 패널이 펼쳐져 있으면 함께 닫아, 한 번에 하나만 열리게 한다. */
-
-function wireAfterschoolForm(onAdded) {
-
-  syncAfterschoolForm();
-
-  $('#afterschoolToggle').addEventListener('click', () => {
-
-    const panel = $('#afterschoolPanel');
-
-    const opening = panel.style.display === 'none';
-
-    panel.style.display = opening ? '' : 'none';
-
-    if (opening) {
-
-      syncAfterschoolForm();
-
-      const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none';
-
-      const periodCountForm = $('#periodCountSettingsForm'); if (periodCountForm) periodCountForm.style.display = 'none';
-
-    }
-
-  });
-
-  $('#afterRemove').addEventListener('click', () => {
-
-    const pattern = activePattern();
-
-    const before = (pattern.extraSlots || []).length;
-
-    pattern.extraSlots = (pattern.extraSlots || []).filter(s => s.period_label !== '방과후');
-
-    const removed = before - pattern.extraSlots.length;
-
-    if (removed === 0) return toast('없앨 방과후 상담이 없어요');
-
-    $('#afterschoolPanel').style.display = 'none';
-
-    toast('방과후 상담을 없앴어요');
-
-    syncAfterschoolForm();
-
-    onAdded?.();
-
-  });
-
-  $('#afterAdd').addEventListener('click', () => {
-
-    const pattern = activePattern();
-
-    const startTime = $('#afterStart').value;
-
-    const endTime = $('#afterEnd').value;
-
-    if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
-
-    if (afterschoolOverlapsOtherAudience(startTime, endTime)) {
-
-      const other = teacherState.editingAudience === 'student' ? '학부모' : '학생';
-
-      return toast(`이미 ${other} 방과후 상담으로 잡힌 시간이에요`);
-
-    }
-
-    const consultMinutes = pattern.duration_minutes || (teacherState.editingAudience === 'student' ? 10 : 20);
-
-    const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes });
-
-    if (newSlots.length === 0) return toast('상담 시간보다 긴 구간으로 정해주세요');
-
-    if (!pattern.extraSlots) pattern.extraSlots = [];
-
-    // 방과후는 '몇 시부터 몇 시까지' 하나의 구간으로 다룬다. 그래서 이미 잡혀 있던
-
-    // 방과후 슬롯은 지우고 새 구간으로 다시 만든다. 그래야 시간대를 바꿀 수 있다.
-
-    const had = pattern.extraSlots.some(s => s.period_label === '방과후');
-
-    pattern.extraSlots = pattern.extraSlots.filter(s => s.period_label !== '방과후');
-
-    pattern.extraSlots.push(...newSlots);
-
-    $('#afterschoolPanel').style.display = 'none';
-
-    toast(had ? `방과후 상담을 ${startTime}~${endTime}로 바꿨어요` : `방과후 상담 ${newSlots.length}개를 추가했어요`);
-
-    syncAfterschoolForm();
-
-    onAdded?.();
-
-  });
-
+    <button type="button" class="btn btn-tonal btn-block" id="x-${key}-remove" style="display:none;margin-top:8px;">${kind.label} 상담 없애기</button>
+  </div>`;
 }
 
+/** 두 종류를 나란히 그린다. */
+function extraFormsHtml(block) {
+  return EXTRA_SLOT_KINDS.map(k => extraFormHtml(k.key, block)).join('');
+}
 
+/** 다른 패널이 함께 열려 있으면 닫는다. 한 번에 하나만 펼쳐지게 한다. */
+function closeOtherExtraPanels(exceptKey) {
+  EXTRA_SLOT_KINDS.forEach(k => {
+    if (k.key === exceptKey) return;
+    const el = $(`#x-${k.key}-panel`); if (el) el.style.display = 'none';
+  });
+  const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none';
+  const periodCountForm = $('#periodCountSettingsForm'); if (periodCountForm) periodCountForm.style.display = 'none';
+}
 
-/** 방과후 시간대는 학부모용·학생용 중 하나로만 쓴다. 지금 편집 중인 쪽에서 [startTime,endTime)을
+/** 토글·추가·없애기 버튼을 연결한다. onChanged는 그리드를 다시 그려야 하는
+ * 화면(2단계)에서만 넘긴다 — 1단계는 아직 그리드가 없어서 안 넘긴다. */
+function wireExtraForms(onChanged) {
+  EXTRA_SLOT_KINDS.forEach(kind => {
+    const key = kind.key;
+    if (!$(`#x-${key}-toggle`)) return;
+    syncExtraForm(key);
 
- * 추가하려 할 때, 반대쪽에 이미 방과후로 잡아둔 시간과 겹치는지 본다. */
+    $(`#x-${key}-toggle`).addEventListener('click', () => {
+      const panel = $(`#x-${key}-panel`);
+      const opening = panel.style.display === 'none';
+      panel.style.display = opening ? '' : 'none';
+      if (opening) { syncExtraForm(key); closeOtherExtraPanels(key); }
+    });
 
-function afterschoolOverlapsOtherAudience(startTime, endTime) {
+    $(`#x-${key}-remove`).addEventListener('click', () => {
+      const pattern = activePattern();
+      const before = (pattern.extraSlots || []).length;
+      pattern.extraSlots = (pattern.extraSlots || []).filter(s => s.period_label !== kind.label);
+      if (before === pattern.extraSlots.length) return toast(`없앨 ${kind.label} 상담이 없어요`);
+      $(`#x-${key}-panel`).style.display = 'none';
+      toast(`${kind.label} 상담을 없앴어요`);
+      syncExtraForm(key);
+      onChanged?.();
+    });
+
+    $(`#x-${key}-add`).addEventListener('click', () => {
+      const pattern = activePattern();
+      const startTime = $(`#x-${key}-start`).value;
+      const endTime = $(`#x-${key}-end`).value;
+      if (!startTime || !endTime || startTime >= endTime) return toast('시작·종료 시간을 확인해주세요');
+      if (extraOverlapsOtherAudience(startTime, endTime, kind.label)) {
+        const other = teacherState.editingAudience === 'student' ? '학부모' : '학생';
+        return toast(`이미 ${other} ${kind.label} 상담으로 잡힌 시간이에요`);
+      }
+      const consultMinutes = pattern.duration_minutes || (teacherState.editingAudience === 'student' ? 10 : 20);
+      const newSlots = buildAfterschoolSlots({ startTime, endTime, consultMinutes, label: kind.label });
+      if (newSlots.length === 0) return toast('상담 시간보다 긴 구간으로 정해주세요');
+      if (!pattern.extraSlots) pattern.extraSlots = [];
+      // 한 종류는 '몇 시부터 몇 시까지' 구간 하나로 다룬다. 그래서 같은 이름으로
+      // 이미 잡혀 있던 슬롯은 지우고 새 구간으로 다시 만든다.
+      const had = pattern.extraSlots.some(s => s.period_label === kind.label);
+      pattern.extraSlots = pattern.extraSlots.filter(s => s.period_label !== kind.label);
+      pattern.extraSlots.push(...newSlots);
+      $(`#x-${key}-panel`).style.display = 'none';
+      toast(had ? `${kind.label} 상담을 ${startTime}~${endTime}로 바꿨어요`
+                : `${kind.label} 상담 ${newSlots.length}개를 추가했어요`);
+      syncExtraForm(key);
+      onChanged?.();
+    });
+  });
+}
+
+function extraOverlapsOtherAudience(startTime, endTime, label) {
 
   const other = teacherState.editingAudience === 'student' ? teacherState.periodPattern : teacherState.studentPattern;
 
-  const otherAfter = (other?.extraSlots || []).filter(s => s.period_label === '방과후');
+  const otherAfter = (other?.extraSlots || []).filter(s => s.period_label === label);
 
   if (otherAfter.length === 0) return false;
 
@@ -3341,7 +3305,7 @@ function renderAvailabilityPatternEditor() {
 
         </div>
 
-        <p class="hint" style="margin:8px 0 14px;">학생 상담은 교과시간엔 할 수 없어서, 학부모 시간표에 이미 있는 쉬는시간·점심시간 안에서만 만들어요. 방과후 상담은 다음 화면(요일별 시간표)에서 따로 추가할 수 있어요.</p>
+        <p class="hint" style="margin:8px 0 14px;">학생 상담은 교과시간엔 할 수 없어서, 학부모 시간표에 이미 있는 쉬는시간·점심시간 안에서만 만들어요. 1교시 전과 방과후 상담은 다음 화면(요일별 시간표)에서 따로 추가할 수 있어요.</p>
 
         `}
 
@@ -3491,9 +3455,9 @@ function renderWeekdayEditor() {
 
         ${showLunchPanel ? '<button type="button" class="btn btn-tonal-sun" id="lunchSettingsToggle">점심시간 상세설정</button>' : ''}
 
-        <button type="button" class="btn btn-tonal" id="afterschoolToggle">방과후 상담 추가</button>
-
       </div>
+
+      <div class="row" style="margin-bottom:10px;">${extraFormsHtml(false)}</div>
 
       ${showLunchPanel ? `
 
@@ -3519,23 +3483,7 @@ function renderWeekdayEditor() {
 
       ` : ''}
 
-      <div id="afterschoolPanel" style="display:none;margin-bottom:16px;">
 
-        <div id="afterschoolHint" class="hint" style="margin:0 0 8px;"></div>
-
-        <div id="afterschoolForm" class="row">
-
-          <div class="field"><label>시작</label><input type="time" id="afterStart" value="16:30"></div>
-
-          <div class="field"><label>종료</label><input type="time" id="afterEnd" value="17:30"></div>
-
-          <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-secondary btn-block btn-field-height" id="afterAdd">추가</button></div>
-
-        </div>
-
-        <button type="button" class="btn btn-tonal btn-block" id="afterRemove" style="display:none;margin-top:8px;">방과후 상담 없애기</button>
-
-      </div>
 
 
 
@@ -3563,7 +3511,7 @@ function renderWeekdayEditor() {
 
         const lunchForm = $('#lunchSettingsForm'); if (lunchForm) lunchForm.style.display = 'none';
 
-        const afterPanel = $('#afterschoolPanel'); if (afterPanel) afterPanel.style.display = 'none';
+        closeOtherExtraPanels(null);
 
       }
 
@@ -3593,7 +3541,7 @@ function renderWeekdayEditor() {
 
       if (opening) {
 
-        const afterPanel = $('#afterschoolPanel'); if (afterPanel) afterPanel.style.display = 'none';
+        closeOtherExtraPanels(null);
 
         const periodCountForm = $('#periodCountSettingsForm'); if (periodCountForm) periodCountForm.style.display = 'none';
 
@@ -3619,7 +3567,7 @@ function renderWeekdayEditor() {
 
 
 
-  wireAfterschoolForm(() => renderPatternGrid());
+  wireExtraForms(() => renderPatternGrid());
 
   $('#saveDateBtn').addEventListener('click', saveAvailability);
 
