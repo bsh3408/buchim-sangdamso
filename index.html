@@ -78,6 +78,11 @@ const MODE_LABEL = { phone: '전화', in_person: '방문' };
 
 const SCHOOL_LEVEL_SUFFIX = { elementary: '초등학교', middle: '중학교', high: '고등학교' };
 
+/** 학생 상담 기능을 켤지 정하는 스위치. 지금은 학부모 상담만 연다.
+    다시 열 때는 이 값을 true로 바꾸기만 하면 된다. 데이터베이스와
+    저장된 학생 상담 시간표는 그대로 두었으므로 지워지지 않는다. */
+const STUDENT_CONSULT_ENABLED = false;
+
 /** 비밀번호를 잊었을 때 본인을 확인하는 질문. 데이터베이스에는 id만 저장하므로
     id의 의미를 절대 바꾸면 안 된다. 질문은 뒤에만 추가하고, 쓰지 않을 질문도
     목록에서 지우지 않는다. 지우면 이미 저장된 답이 엉뚱한 질문에 붙는다. */
@@ -354,7 +359,7 @@ function renderHome() {
 
           <h1 id="home-heading">이야기가 필요한 날,<br>우리 만나요.</h1>
 
-          <p class="noticeboard-description">학부모님도, 학생도.<br>선생님과 이야기할 시간을 정해요.</p>
+          <p class="noticeboard-description">${STUDENT_CONSULT_ENABLED ? '학부모님도, 학생도.<br>' : ''}선생님과 이야기할 시간을 정해요.</p>
 
           <button type="button" class="noticeboard-entry noticeboard-teacher-primary" onclick="startTeacher()">
 
@@ -364,7 +369,7 @@ function renderHome() {
 
           </button>
 
-          <div class="noticeboard-sub-label">학부모·학생이신가요?</div>
+          <div class="noticeboard-sub-label">${STUDENT_CONSULT_ENABLED ? '학부모·학생이신가요?' : '학부모이신가요?'}</div>
 
           <div class="noticeboard-sub-actions">
 
@@ -374,11 +379,13 @@ function renderHome() {
 
             </button>
 
+            ${STUDENT_CONSULT_ENABLED ? `
+
             <button type="button" class="noticeboard-sub-entry noticeboard-student" onclick="startStudent()">
 
               <strong>학생 상담</strong><small>쉬는시간·점심시간·방과후에</small>
 
-            </button>
+            </button>` : ''}
 
           </div>
 
@@ -406,7 +413,10 @@ let parentState = { audience: 'parent', parentCode: null, pageData: null, select
 
 function startParent() { enterBookingFlow('parent'); }
 
-function startStudent() { enterBookingFlow('student'); }
+function startStudent() {
+  if (!STUDENT_CONSULT_ENABLED) return toast('지금은 학부모 상담만 받고 있어요');
+  enterBookingFlow('student');
+}
 
 /** 학부모/학생 두 플로우가 화면 구성은 똑같고 문구·예약 폼만 다르므로, 진입 화면부터
  * parentState.audience 하나로 갈라 같은 코드를 함께 쓴다. */
@@ -1294,7 +1304,7 @@ function renderTeacherQna() {
 
       <h2>질문 게시판</h2>
 
-      <p class="subtitle">학부모·학생이 남긴 질문에 답변하세요.</p>
+      <p class="subtitle">${STUDENT_CONSULT_ENABLED ? '학부모·학생이' : '학부모님이'} 남긴 질문에 답변하세요.</p>
 
       <div id="teacherQnaList"></div>
 
@@ -2216,9 +2226,11 @@ function renderTeacherDashboard() {
 
               <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}</span>
 
+              ${STUDENT_CONSULT_ENABLED ? `
+
               <button type="button" class="btn btn-secondary btn-block" id="copyStudentMsgBtn" style="margin-top:8px;">학생에게 보낼 메시지 복사하기</button>
 
-              <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}&for=student</span>
+              <span class="code-display" style="display:inline-block;margin-top:8px;">${location.origin}${location.pathname}?code=${t.parentCode}&for=student</span>` : ''}
 
             </div>
 
@@ -2244,11 +2256,13 @@ function renderTeacherDashboard() {
 
         </button>
 
+        ${STUDENT_CONSULT_ENABLED ? `
+
         <button type="button" class="home-choice" onclick="openAvailabilityEditor('student')">
 
           <span class="txt"><strong>학생 상담 시간 설정</strong><span>쉬는시간·점심시간·방과후 중에서 설정하세요.</span></span>
 
-        </button>
+        </button>` : ''}
 
         <button type="button" class="home-choice" onclick="openBookingsList()">
 
@@ -2258,7 +2272,7 @@ function renderTeacherDashboard() {
 
         <button type="button" class="home-choice" onclick="openTeacherQna()">
 
-          <span class="txt"><strong>질문 게시판</strong><span>학부모·학생 질문에 답변하세요.</span></span>
+          <span class="txt"><strong>질문 게시판</strong><span>${STUDENT_CONSULT_ENABLED ? '학부모·학생' : '학부모'} 질문에 답변하세요.</span></span>
 
         </button>
 
@@ -2284,7 +2298,7 @@ function renderTeacherDashboard() {
 
       });
 
-      $('#copyStudentMsgBtn').addEventListener('click', () => {
+      $('#copyStudentMsgBtn')?.addEventListener('click', () => {
 
         copyToClipboard(buildStudentShareMessage(t), '메시지를 복사했어요! 학생에게 붙여넣기 해주세요');
 
@@ -4530,7 +4544,7 @@ window.openSecurityQuestion = openSecurityQuestion;
 
   if (code) {
 
-    parentState.audience = params.get('for') === 'student' ? 'student' : 'parent';
+    parentState.audience = (STUDENT_CONSULT_ENABLED && params.get('for') === 'student') ? 'student' : 'parent';
 
     $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>시간표 로드 중...</div>`;
 
