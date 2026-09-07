@@ -79,6 +79,12 @@ export const db = {
       p_name: name, p_school_level: schoolLevel, p_school: school, p_grade: grade, p_class: teacherClass,
       p_answer: answer, p_new_password: newPassword,
     }),
+  adminLogin: (username, password) =>
+    rpc('admin_login', { p_username: username, p_password: password }),
+  adminListTeachers: (username, password) =>
+    rpc('admin_list_teachers', { p_username: username, p_password: password }),
+  adminListBookings: (username, password, pageId) =>
+    rpc('admin_list_bookings', { p_username: username, p_password: password, p_page_id: pageId }),
   setSecurityQuestion: (pageId, adminCode, questionId, answer) =>
     rpc('set_security_question', {
       p_page_id: pageId, p_admin_code: adminCode,

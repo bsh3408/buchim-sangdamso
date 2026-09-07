@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도란도란 관리자</title>
+<link rel="stylesheet" href="./shared/chalkboard.css">
+<style>
+  .admin-bar { display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px 0 18px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+  .admin-bar strong { font-size:18px; color:var(--text); }
+  .admin-bar .who { font-size:12px; color:var(--text-muted); }
+  .stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin-bottom:20px; }
+  .stat { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 12px; text-align:center; }
+  .stat .num { font-size:24px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
+  .stat .lbl { font-size:11px; color:var(--text-muted); margin-top:4px; }
+  .t-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .t-table th, .t-table td { padding:10px 8px; text-align:left; border-bottom:1px solid var(--border); vertical-align:top; }
+  .t-table th { font-size:11px; color:var(--text-muted); font-weight:600; white-space:nowrap; }
+  .t-table td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .t-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .pill-on { background:#e4f0e2; color:#3e6b39; }
+  .pill-off { background:#efe9e2; color:#8a7a6a; }
+  .pill-warn { background:#f8e6d8; color:#9a5f2c; }
+  .row-btn { background:none; border:1px solid var(--border); border-radius:8px; padding:5px 10px;
+    font-size:12px; cursor:pointer; color:var(--text); font-family:inherit; white-space:nowrap; }
+  .row-btn:hover { background:var(--surface); }
+  .stale { color:#9a5f2c; }
+  .mask-note { font-size:12px; color:var(--text-muted); margin:-8px 0 16px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <button type="button" class="logo" style="background:none;border:none;cursor:pointer;font:inherit;color:inherit;" onclick="location.reload()">도란도란 <span style="font-size:13px;font-weight:500;">관리자</span></button>
+  </header>
+  <main id="main"></main>
+  <footer class="site-footer">made by. BYUN &nbsp;·&nbsp; 문의사항 : <a href="mailto:bsh3408@gmail.com">bsh3408@gmail.com</a></footer>
+</div>
+
+<script type="module">
+import { db } from './shared/db.js';
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function toast(msg, ms) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms || 2600);
+}
+
+/** 관리자 자격은 화면이 열려 있는 동안만 메모리에 둔다. 새로고침하면 다시 로그인한다.
+    브라우저 저장소에 두면 그 기기를 쓰는 다른 사람이 그대로 들어올 수 있다. */
+let admin = null;
+
+const LEVEL_LABEL = { elementary: '초등', middle: '중', high: '고' };
+
+function formatDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+function daysSince(iso) {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
+function renderLogin(message) {
+  $('#main').innerHTML = `
+    <div class="card entry-card">
+      <p class="eyebrow">관리자</p>
+      <h1>관리자 로그인</h1>
+      <p class="subtitle">선생님들의 이용 현황과 예약 상황을 확인해요.</p>
+      <div class="field"><label for="a-id">아이디</label><input type="text" id="a-id" autocomplete="username"></div>
+      <div class="field"><label for="a-pw">비밀번호</label><input type="password" id="a-pw" autocomplete="current-password"></div>
+      <button class="btn btn-primary btn-block" id="a-submit">로그인</button>
+      ${message ? `<p class="hint" style="margin-top:12px;">${escapeHtml(message)}</p>` : ''}
+    </div>
+  `;
+  $('#a-submit').addEventListener('click', doLogin);
+  $('#a-pw').addEventListener('keypress', e => { if (e.key === 'Enter') doLogin(); });
+  $('#a-id').focus();
+}
+
+async function doLogin() {
+  const username = $('#a-id').value.trim();
+  const password = $('#a-pw').value;
+  if (!username || !password) return toast('아이디와 비밀번호를 모두 입력해주세요');
+
+  const btn = $('#a-submit');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    const res = await db.adminLogin(username, password);
+    if (!res || !res.ok) {
+      btn.disabled = false; btn.textContent = '로그인';
+      if (res && res.reason === 'locked') {
+        return toast('여러 번 틀려서 잠겼어요. 한 시간 뒤에 다시 시도해주세요');
+      }
+      return toast('아이디 또는 비밀번호가 맞지 않아요');
+    }
+    admin = { username, password };
+    await loadDashboard();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '로그인';
+    toast(err.message);
+  }
+}
+
+async function loadDashboard() {
+  $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>불러오는 중...</div>`;
+  try {
+    const res = await db.adminListTeachers(admin.username, admin.password);
+    if (!res || !res.ok) {
+      admin = null;
+      return renderLogin('다시 로그인해주세요.');
+    }
+    renderDashboard(res.teachers || []);
+  } catch (err) {
+    admin = null;
+    renderLogin(err.message);
+  }
+}
+
+function renderDashboard(teachers) {
+  const totalBookings = teachers.reduce((n, t) => n + Number(t.booking_count || 0), 0);
+  const totalQna = teachers.reduce((n, t) => n + Number(t.qna_count || 0), 0);
+  const unanswered = teachers.reduce((n, t) => n + Number(t.qna_unanswered || 0), 0);
+  const published = teachers.filter(t => t.published).length;
+  const noQuestion = teachers.filter(t => !t.has_security_question).length;
+
+  $('#main').innerHTML = `
+    <div class="admin-bar">
+      <div><strong>이용 현황</strong><div class="who">${escapeHtml(admin.username)} 님으로 로그인</div></div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="row-btn" id="a-refresh">새로고침</button>
+        <button type="button" class="row-btn" id="a-logout">로그아웃</button>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat"><div class="num">${teachers.length}</div><div class="lbl">가입한 선생님</div></div>
+      <div class="stat"><div class="num">${published}</div><div class="lbl">시간표 게시</div></div>
+      <div class="stat"><div class="num">${totalBookings}</div><div class="lbl">전체 예약</div></div>
+      <div class="stat"><div class="num">${totalQna}</div><div class="lbl">질문</div></div>
+      <div class="stat"><div class="num">${unanswered}</div><div class="lbl">미답변</div></div>
+    </div>
+
+    ${noQuestion > 0 ? `<div class="info-box" style="margin-bottom:16px;">확인 질문을 등록하지 않은 선생님이 ${noQuestion}분 계세요. 비밀번호를 잊으면 되찾을 수 없어요.</div>` : ''}
+
+    <div class="t-scroll">
+      <table class="t-table">
+        <thead>
+          <tr>
+            <th>선생님</th><th>학교·학급</th><th>가입</th><th>최근 접속</th>
+            <th>게시</th><th class="num">날짜</th><th class="num">열린칸</th>
+            <th class="num">예약</th><th class="num">질문</th><th>확인질문</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${teachers.length === 0
+            ? '<tr><td colspan="11"><p class="hint">아직 가입한 선생님이 없어요.</p></td></tr>'
+            : teachers.map(t => {
+                const idle = daysSince(t.last_login_at);
+                const idleWarn = idle !== null && idle >= 21;
+                return `
+            <tr>
+              <td><strong>${escapeHtml(t.name)}</strong></td>
+              <td>${escapeHtml(t.school)}<br><span class="who">${escapeHtml(t.grade)}학년 ${escapeHtml(t.teacher_class)}반</span></td>
+              <td>${formatDateTime(t.created_at)}</td>
+              <td class="${idleWarn ? 'stale' : ''}">${formatDateTime(t.last_login_at)}${idle !== null ? `<br><span class="who">${idle}일 전</span>` : ''}</td>
+              <td>${t.published
+                ? `<span class="pill pill-on">게시</span>`
+                : `<span class="pill pill-off">준비중</span>`}</td>
+              <td class="num">${t.date_count ?? 0}</td>
+              <td class="num">${t.open_slot_count ?? 0}</td>
+              <td class="num">${t.booking_count ?? 0}</td>
+              <td class="num">${t.qna_count ?? 0}${Number(t.qna_unanswered) > 0 ? ` <span class="pill pill-warn">${t.qna_unanswered}</span>` : ''}</td>
+              <td>${t.has_security_question
+                ? `<span class="pill pill-on">있음</span>`
+                : `<span class="pill pill-warn">없음</span>`}</td>
+              <td>${t.page_id && Number(t.booking_count) > 0
+                ? `<button type="button" class="row-btn" data-page="${t.page_id}" data-name="${escapeHtml(t.name)}">예약 보기</button>`
+                : ''}</td>
+            </tr>`;
+              }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p class="mask-note" style="margin-top:14px;">학생 이름과 연락처는 가려서 보여드려요. 원본은 이 화면으로 전달되지 않아요.</p>
+  `;
+
+  $('#a-refresh').addEventListener('click', loadDashboard);
+  $('#a-logout').addEventListener('click', () => { admin = null; renderLogin('로그아웃했어요.'); });
+  $$('[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => openBookings(btn.dataset.page, btn.dataset.name));
+  });
+}
+
+async function openBookings(pageId, teacherName) {
+  $('#main').innerHTML = `<div class="loading"><div class="spinner"></div>불러오는 중...</div>`;
+  try {
+    const res = await db.adminListBookings(admin.username, admin.password, pageId);
+    if (!res || !res.ok) {
+      admin = null;
+      return renderLogin('다시 로그인해주세요.');
+    }
+    renderBookings(res.bookings || [], teacherName);
+  } catch (err) {
+    toast(err.message);
+    loadDashboard();
+  }
+}
+
+function renderBookings(bookings, teacherName) {
+  $('#main').innerHTML = `
+    <div class="admin-bar">
+      <div><strong>${escapeHtml(teacherName)} 선생님 예약</strong><div class="who">${bookings.length}건</div></div>
+      <button type="button" class="row-btn" id="a-back">← 목록으로</button>
+    </div>
+
+    <div class="t-scroll">
+      <table class="t-table">
+        <thead>
+          <tr><th>날짜</th><th>시간</th><th>대상</th><th>학생</th><th>반</th><th>보호자</th><th>연락처</th><th>방법</th><th>주제</th><th>메모</th></tr>
+        </thead>
+        <tbody>
+          ${bookings.length === 0
+            ? '<tr><td colspan="10"><p class="hint">예약이 없어요.</p></td></tr>'
+            : bookings.map(b => `
+            <tr>
+              <td>${escapeHtml(b.date)}</td>
+              <td>${escapeHtml(String(b.start_time).slice(0, 5))}</td>
+              <td>${b.audience === 'student' ? '학생' : '학부모'}</td>
+              <td>${escapeHtml(b.student_name)}</td>
+              <td>${escapeHtml(b.class_name)}</td>
+              <td>${escapeHtml(b.parent_name || '—')}</td>
+              <td>${escapeHtml(b.parent_phone || '—')}</td>
+              <td>${b.mode === 'phone' ? '전화' : '방문'}</td>
+              <td>${escapeHtml((b.topics || []).join(', ') || '—')}</td>
+              <td>${b.has_notes ? '있음' : '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p class="mask-note" style="margin-top:14px;">학생·보호자 이름과 연락처는 가려서 보여드려요. 메모 내용은 열지 않고 있는지만 표시해요.</p>
+  `;
+  $('#a-back').addEventListener('click', loadDashboard);
+}
+
+renderLogin();
+</script>
+</body>
+</html>
