@@ -1654,10 +1654,18 @@ async function doPasswordResetConfirm(identity) {
   const btn = $('#pc-submit');
   btn.disabled = true; btn.textContent = '확인 중...';
   try {
-    await db.confirmPasswordReset(
+    const res = await db.confirmPasswordReset(
       identity.name, identity.level, identity.school, identity.grade, identity.teacherClass,
       code, newPassword
     );
+    if (!res || !res.ok) {
+      btn.disabled = false; btn.textContent = '비밀번호 재설정';
+      if (res && res.reason === 'weak_password') return toast('새 비밀번호는 4자 이상이어야 해요');
+      if (res && res.reason === 'too_many_attempts') {
+        return toast('인증 코드를 너무 여러 번 틀렸어요. 비밀번호 찾기를 처음부터 다시 해주세요');
+      }
+      return toast('인증 코드가 올바르지 않거나 만료됐어요');
+    }
     toast('비밀번호를 새로 설정했어요. 다시 로그인해주세요');
     startTeacherLogin();
   } catch (err) {
