@@ -2196,6 +2196,10 @@ function renderTeacherDashboard() {
 
         </button>
 
+        <button type="button" class="home-choice" onclick="openChangePassword()">
+          <span class="txt"><strong>비밀번호 변경</strong><span>로그인에 쓰는 비밀번호를 바꾸세요.</span></span>
+        </button>
+
       </div>
 
     `;
@@ -2220,6 +2224,40 @@ function renderTeacherDashboard() {
 
   });
 
+}
+
+function openChangePassword() {
+  setView('change-password', () => {
+    $('#main').innerHTML = `
+      <div class="card entry-card">
+        <p class="eyebrow">교사 공간</p>
+        <h1>비밀번호 변경</h1>
+        <p class="subtitle">현재 비밀번호를 확인한 뒤 새 비밀번호로 바꿔드려요.</p>
+        <div class="field"><label for="cp-current">현재 비밀번호</label><input type="password" id="cp-current" placeholder="지금 쓰는 비밀번호"></div>
+        <div class="field"><label for="cp-new">새 비밀번호 (4자리 이상)</label><input type="password" id="cp-new" placeholder="새로 쓸 비밀번호"></div>
+        <button class="btn btn-primary btn-block" id="cp-submit">비밀번호 바꾸기</button>
+      </div>
+    `;
+    $('#cp-submit').addEventListener('click', doChangePassword);
+  });
+}
+
+async function doChangePassword() {
+  const current = $('#cp-current').value;
+  const next = $('#cp-new').value;
+  if (!current || !next) return toast('현재 비밀번호와 새 비밀번호를 모두 입력해주세요');
+
+  const btn = $('#cp-submit');
+  btn.disabled = true; btn.textContent = '변경 중...';
+  try {
+    await db.changeOwnPassword(teacherState.pageId, current, next);
+    teacherState.adminCode = next;
+    toast('비밀번호를 바꿨어요');
+    renderTeacherDashboard();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '비밀번호 바꾸기';
+    toast(err.message);
+  }
 }
 
 
@@ -4360,6 +4398,7 @@ window.openBookingsList = openBookingsList;
 window.openQnaBoard = openQnaBoard;
 
 window.openTeacherQna = openTeacherQna;
+window.openChangePassword = openChangePassword;
 
 
 
