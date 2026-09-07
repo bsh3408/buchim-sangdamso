@@ -1498,6 +1498,8 @@ function startTeacherLogin() {
 
         <button class="btn btn-primary btn-block" id="tl-submit">로그인</button>
 
+        <button type="button" class="link-btn" id="tl-forgot">비밀번호를 잊으셨나요?</button>
+
       </div>
 
     `;
@@ -1507,6 +1509,8 @@ function startTeacherLogin() {
     $('#tl-code').addEventListener('keypress', e => { if (e.key === 'Enter') doTeacherLogin(); });
 
     $('#tl-submit').addEventListener('click', doTeacherLogin);
+
+    $('#tl-forgot').addEventListener('click', startPasswordResetRequest);
 
   });
 
@@ -1556,6 +1560,110 @@ async function doTeacherLogin() {
 
   }
 
+}
+
+
+
+function startPasswordResetRequest() {
+  setView('password-reset-request', () => {
+    $('#main').innerHTML = `
+      <div class="card entry-card">
+        <p class="eyebrow">교사 공간</p>
+        <h1>비밀번호를 잊으셨나요?</h1>
+        <p class="subtitle">가입할 때 등록한 정보를 입력하면, 등록된 이메일로 인증 코드를 보내드려요.</p>
+        <div class="field"><label for="pr-name">이름</label><input type="text" id="pr-name" placeholder="예: 김민준"></div>
+        <div class="field">
+          <label for="pr-school">학교</label>
+          <div class="row school-row">
+            <input type="text" id="pr-school" placeholder="예: 신장" style="flex:2;">
+            <div class="choice-group" id="pr-level-group" style="flex:3;">
+              <div class="choice" data-level="elementary">초등학교</div>
+              <div class="choice" data-level="middle">중학교</div>
+              <div class="choice" data-level="high">고등학교</div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="pr-grade">학년</label><input type="number" id="pr-grade" min="1" max="6" placeholder="예: 2"></div>
+          <div class="field"><label for="pr-class">반</label><input type="number" id="pr-class" min="1" max="20" placeholder="예: 3"></div>
+        </div>
+        <button class="btn btn-primary btn-block" id="pr-submit">인증 코드 받기</button>
+      </div>
+    `;
+    let level = null;
+    $$('#pr-level-group .choice').forEach(c => {
+      c.addEventListener('click', () => {
+        level = c.dataset.level;
+        $$('#pr-level-group .choice').forEach(x => x.classList.toggle('selected', x === c));
+      });
+    });
+    $('#pr-submit').addEventListener('click', () => doPasswordResetRequest(() => level));
+  });
+}
+
+async function doPasswordResetRequest(getLevel) {
+  const name = $('#pr-name').value.trim();
+  const schoolPrefix = $('#pr-school').value.trim();
+  const level = getLevel();
+  const grade = $('#pr-grade').value.trim();
+  const teacherClass = $('#pr-class').value.trim();
+  if (!name || !schoolPrefix || !level || !grade || !teacherClass) {
+    return toast('모든 항목을 입력해주세요');
+  }
+  const school = `${schoolPrefix}${SCHOOL_LEVEL_SUFFIX[level]}`;
+
+  const btn = $('#pr-submit');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    const res = await db.requestPasswordReset(name, level, school, grade, teacherClass);
+    if (!res.ok) {
+      btn.disabled = false; btn.textContent = '인증 코드 받기';
+      if (res.reason === 'no_email') return toast('이메일을 등록하지 않아 비밀번호를 찾을 수 없어요');
+      if (res.reason === 'too_soon') return toast('잠시 후 다시 시도해주세요');
+      return toast('일치하는 계정을 찾을 수 없어요. 정보를 다시 확인해주세요');
+    }
+    toast('인증 코드를 이메일로 보냈어요');
+    startPasswordResetConfirm({ name, level, school, grade, teacherClass });
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '인증 코드 받기';
+    toast(err.message);
+  }
+}
+
+function startPasswordResetConfirm(identity) {
+  setView('password-reset-confirm', () => {
+    $('#main').innerHTML = `
+      <div class="card entry-card">
+        <p class="eyebrow">교사 공간</p>
+        <h1>인증 코드를 입력해주세요</h1>
+        <p class="subtitle">이메일로 받은 6자리 인증 코드와 새 비밀번호를 입력해주세요.</p>
+        <div class="field"><label for="pc-code">인증 코드</label><input type="text" id="pc-code" inputmode="numeric" maxlength="6" placeholder="예: 482913"></div>
+        <div class="field"><label for="pc-password">새 비밀번호 (4자리 이상)</label><input type="password" id="pc-password" placeholder="새로 쓸 비밀번호"></div>
+        <button class="btn btn-primary btn-block" id="pc-submit">비밀번호 재설정</button>
+      </div>
+    `;
+    $('#pc-submit').addEventListener('click', () => doPasswordResetConfirm(identity));
+  });
+}
+
+async function doPasswordResetConfirm(identity) {
+  const code = $('#pc-code').value.trim();
+  const newPassword = $('#pc-password').value;
+  if (!code || !newPassword) return toast('인증 코드와 새 비밀번호를 모두 입력해주세요');
+
+  const btn = $('#pc-submit');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  try {
+    await db.confirmPasswordReset(
+      identity.name, identity.level, identity.school, identity.grade, identity.teacherClass,
+      code, newPassword
+    );
+    toast('비밀번호를 새로 설정했어요. 다시 로그인해주세요');
+    startTeacherLogin();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '비밀번호 재설정';
+    toast(err.message);
+  }
 }
 
 
