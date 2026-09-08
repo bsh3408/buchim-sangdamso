@@ -2747,7 +2747,7 @@ function renderStudentSchedule() {
       <button type="button" class="btn btn-tonal btn-block" id="stuAddBand" style="margin-top:8px;">시간대 추가</button>
 
       <p class="hint" style="margin-top:14px;">고른 날짜마다 상담 칸 ${total}개가 만들어져요.</p>
-      <button class="btn btn-primary btn-block btn-lg" id="stuSave" style="margin-top:8px;">고른 날짜에 저장</button>
+      <button class="btn btn-primary btn-block btn-lg" id="stuSave" style="margin-top:8px;">다음 · 요일별 시간표 만들기</button>
     </div>
   `;
 
@@ -2771,7 +2771,7 @@ function renderStudentSchedule() {
     studentPlan.bands.push({ label: '쉬는시간', start: '10:20', end: '10:30' });
     renderStudentSchedule();
   });
-  $('#stuSave').addEventListener('click', saveStudentSchedule);
+  $('#stuSave').addEventListener('click', goStudentWeekdayEditor);
 }
 
 function renderStudentBands() {
@@ -2812,7 +2812,9 @@ function renderStudentBands() {
   }));
 }
 
-async function saveStudentSchedule() {
+/** 적어둔 시간대로 슬롯 틀을 만들고, 학부모와 같은 요일별 시간표 화면으로 넘긴다.
+ * 거기서 칸을 열고 닫거나 방문·전화를 정한 뒤 저장한다. */
+function goStudentWeekdayEditor() {
   if (studentPlan.dates.length === 0) return toast('상담할 날짜를 골라주세요');
   if (studentPlan.bands.length === 0) return toast('상담 시간대를 하나 이상 추가해주세요');
 
@@ -2830,35 +2832,31 @@ async function saveStudentSchedule() {
     buildAfterschoolSlots({
       startTime: b.start, endTime: b.end,
       consultMinutes: studentPlan.consultMinutes, label: b.label,
-    }).forEach(s => slots.push({ ...s, is_open: true, mode: 'in_person' }));
+    }).forEach(sl => slots.push(sl));
   }
 
-  // 같은 시각이 두 구간에 겹쳐 들어가면 저장이 막히므로 미리 걸러낸다.
   const seen = new Set();
-  const unique = slots.filter(s => {
-    if (seen.has(s.start_time)) return false;
-    seen.add(s.start_time);
-    return true;
-  });
-  if (unique.length !== slots.length) {
-    return toast('시간대끼리 겹쳐요. 시각을 다시 확인해주세요');
+  for (const sl of slots) {
+    if (seen.has(sl.start_time)) return toast('시간대끼리 겹쳐요. 시각을 다시 확인해주세요');
+    seen.add(sl.start_time);
   }
+  slots.sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-  const btn = $('#stuSave');
-  btn.disabled = true; btn.textContent = '저장 중...';
-  try {
-    for (const date of [...studentPlan.dates].sort()) {
-      await db.saveDateSlots(teacherState.pageId, teacherState.adminCode, date,
-                             'high', studentPlan.consultMinutes, unique, 'student');
-    }
-    toast(`${studentPlan.dates.length}개 날짜에 저장했어요`);
-    await loadTeacherSchedule();
-    renderTeacherDashboard();
-  } catch (err) {
-    btn.disabled = false; btn.textContent = '고른 날짜에 저장';
-    toast(err.message);
-  }
+  // 학생 상담은 요일마다 시간이 같으므로 요일별 틀에는 넣지 않고, 요일 공통인
+  // extraSlots에 담는다. 그래야 월~금 어느 날을 골라도 같은 칸이 나온다.
+  teacherState.editingAudience = 'student';
+  teacherState.studentPattern = {
+    preset: 'custom',
+    duration_minutes: studentPlan.consultMinutes,
+    periodSlotsByDow: {},
+    extraSlots: slots.map(sl => ({ ...sl, is_open: true, mode: 'in_person' })),
+    lunch: null,
+  };
+  teacherState.selectedDates = new Set(studentPlan.dates);
+
+  setView('teacher-weekday', renderWeekdayEditor);
 }
+
 
 function openStudentAssign(focus = 'roster') {
   assignState.focus = focus;
