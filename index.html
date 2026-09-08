@@ -2505,10 +2505,12 @@ function openDeadlineSetting(audience) {
         <h1>예약 마감</h1>
         <p class="subtitle">정한 시각이 지나면 새 신청을 받지 않아요.</p>
 
-        <div class="info-box" style="margin-bottom:16px;">
-          ${current
-            ? `지금은 <strong>${escapeHtml(deadlineLabel(current))}</strong>까지 받고 있어요.${passed ? ' 이미 마감됐어요.' : ''}`
-            : '아직 마감을 정하지 않았어요. 계속 신청을 받아요.'}
+        <div class="info-box">
+          <div>
+            ${current
+              ? `지금은 <strong>${escapeHtml(deadlineLabel(current))}</strong>까지 받고 있어요.${passed ? ' 이미 마감됐어요.' : ''}`
+              : '아직 마감을 정하지 않았어요. 계속 신청을 받아요.'}
+          </div>
         </div>
 
         <div class="field">
@@ -2518,7 +2520,7 @@ function openDeadlineSetting(audience) {
         </div>
 
         <button class="btn btn-primary btn-block" id="dlSave">마감 시각 정하기</button>
-        ${current ? '<button type="button" class="btn btn-tonal btn-block" id="dlClear" style="margin-top:8px;">마감 없애기</button>' : ''}
+        ${current ? '<button type="button" class="btn btn-tonal btn-block" id="dlClear" style="margin-top:10px;">마감 없애기</button>' : ''}
       </div>
     `;
 
