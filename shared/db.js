@@ -79,6 +79,10 @@ export const db = {
       p_name: name, p_school_level: schoolLevel, p_school: school, p_grade: grade, p_class: teacherClass,
       p_answer: answer, p_new_password: newPassword,
     }),
+  setBookingDeadline: (pageId, adminCode, audience, deadline) =>
+    rpc('set_booking_deadline', {
+      p_page_id: pageId, p_admin_code: adminCode, p_audience: audience, p_deadline: deadline || null,
+    }),
   saveStudentRoster: (pageId, adminCode, entries) =>
     rpc('save_student_roster', { p_page_id: pageId, p_admin_code: adminCode, p_entries: entries }),
   getStudentRoster: (pageId, adminCode) =>

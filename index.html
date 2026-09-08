@@ -524,7 +524,11 @@ function renderParentTimetableView() {
 
         <h2>${gradeClassLabel(data.grade, data.teacher_class)} · ${escapeHtml(data.teacher_name)} 선생님</h2>
 
-        <p class="subtitle">상담할 날짜를 고른 뒤, 예약 가능한 시간을 선택해주세요.</p>
+        <p class="subtitle">${data.closed ? '신청이 마감됐어요. 이미 하신 예약은 아래에서 확인하고 취소할 수 있어요.' : '상담할 날짜를 고른 뒤, 예약 가능한 시간을 선택해주세요.'}</p>
+
+        ${data.deadline ? `<div class="info-box" style="margin-bottom:16px;">${data.closed
+          ? `<strong>${escapeHtml(deadlineLabel(data.deadline))}</strong>에 신청이 마감됐어요.`
+          : `<strong>${escapeHtml(deadlineLabel(data.deadline))}</strong>까지 신청할 수 있어요.`}</div>` : ''}
 
         <button type="button" class="btn btn-tonal btn-block" onclick="openQnaBoard()" style="margin-bottom:16px;">질문 게시판 →</button>
 
@@ -677,6 +681,8 @@ function renderParentTimetableBody() {
     renderParentSlotGrid(grid, group.slots, {
 
       onEmptyClick: (slot) => {
+
+        if (parentState.pageData.closed) return toast('신청이 마감됐어요');
 
         if (assignedDay) return toast('이 날은 선생님이 정해주세요');
 
@@ -1588,6 +1594,8 @@ let teacherState = {
 
   parentCode: null,
 
+  parentDeadline: null, studentDeadline: null, // 예약 마감 일시(없으면 계속 받는다)
+
   dates: new Map(), // date -> 서버에서 불러온 실제 슬롯(예약 포함, 학부모·학생 섞여 있음)
 
   selectedDates: new Set(), // 달력에서 고른 날짜(저장 대상)
@@ -2066,6 +2074,10 @@ async function loadTeacherSchedule() {
 
   teacherState.parentCode = data.parent_code;
 
+  teacherState.parentDeadline = data.parent_deadline || null;
+
+  teacherState.studentDeadline = data.student_deadline || null;
+
   teacherState.dates = new Map(data.dates.map(d => [d.date, {
 
     ...d,
@@ -2465,17 +2477,90 @@ function wireSubmenu(handlers) {
   });
 }
 
+/** 마감 일시를 화면 입력칸이 쓰는 'YYYY-MM-DDTHH:MM' 꼴로 바꾼다. 서버는 UTC로
+ * 주지만 선생님은 우리 시각으로 보셔야 하므로 지역 시각으로 풀어 쓴다. */
+function deadlineToInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function deadlineLabel(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openDeadlineSetting(audience) {
+  const isStudent = audience === 'student';
+  const who = isStudent ? '학생' : '학부모';
+  setView('deadline-' + audience, () => {
+    const current = isStudent ? teacherState.studentDeadline : teacherState.parentDeadline;
+    const passed = current && new Date(current) < new Date();
+    $('#main').innerHTML = `
+      <div class="card entry-card">
+        <p class="eyebrow">${who} 상담</p>
+        <h1>예약 마감</h1>
+        <p class="subtitle">정한 시각이 지나면 새 신청을 받지 않아요.</p>
+
+        <div class="info-box" style="margin-bottom:16px;">
+          ${current
+            ? `지금은 <strong>${escapeHtml(deadlineLabel(current))}</strong>까지 받고 있어요.${passed ? ' 이미 마감됐어요.' : ''}`
+            : '아직 마감을 정하지 않았어요. 계속 신청을 받아요.'}
+        </div>
+
+        <div class="field">
+          <label for="dlInput">마감 일시</label>
+          <input type="datetime-local" id="dlInput" value="${deadlineToInput(current)}">
+          <div class="field-hint">이미 잡힌 예약은 그대로 남아요. 마감 뒤에도 ${who}가 자기 예약을 취소하는 것은 됩니다.</div>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="dlSave">마감 시각 정하기</button>
+        ${current ? '<button type="button" class="btn btn-tonal btn-block" id="dlClear" style="margin-top:8px;">마감 없애기</button>' : ''}
+      </div>
+    `;
+
+    $('#dlSave').addEventListener('click', () => saveDeadline(audience, $('#dlInput').value));
+    const clear = $('#dlClear');
+    if (clear) clear.addEventListener('click', () => saveDeadline(audience, ''));
+  });
+}
+
+async function saveDeadline(audience, localValue) {
+  if (localValue && new Date(localValue).toString() === 'Invalid Date') {
+    return toast('마감 일시를 다시 확인해주세요');
+  }
+  const iso = localValue ? new Date(localValue).toISOString() : null;
+
+  const btn = $('#dlSave');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    await db.setBookingDeadline(teacherState.pageId, teacherState.adminCode, audience, iso);
+    if (audience === 'student') teacherState.studentDeadline = iso;
+    else teacherState.parentDeadline = iso;
+    toast(iso ? `${deadlineLabel(iso)}까지 받도록 정했어요` : '마감을 없앴어요');
+    openDeadlineSetting(audience);
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '마감 시각 정하기';
+    toast(err.message);
+  }
+}
+
 function openParentMenu() {
   setView('parent-menu', () => {
     $('#main').innerHTML = submenuHtml('학부모 상담', '상담 시간을 정하고 예약과 질문을 관리해요.', [
       { go: 'time', title: '상담 시간 설정', desc: '날짜, 시간대와 상담 방법을 정하세요.' },
       { go: 'bookings', title: '예약 현황', desc: '학부모가 신청한 내용을 확인하고 관리하세요.' },
       { go: 'qna', title: '질문 게시판', desc: '학부모가 남긴 질문에 답변하세요.' },
+      { go: 'deadline', title: '예약 마감', desc: '언제까지 신청을 받을지 정하세요.' },
     ]);
     wireSubmenu({
       time: () => openAvailabilityEditor('parent'),
       bookings: () => openBookingsList('parent'),
       qna: () => openTeacherQna(),
+      deadline: () => openDeadlineSetting('parent'),
     });
   });
 }
@@ -2487,12 +2572,14 @@ function openStudentMenu() {
       { go: 'roster', title: '학생 명단', desc: '반 학생 명단을 넣어두세요.' },
       { go: 'assign', title: '배정', desc: '명단을 상담 시간에 나눠주세요.' },
       { go: 'bookings', title: '예약 현황', desc: '학생 상담 예약을 확인하고 관리하세요.' },
+      { go: 'deadline', title: '예약 마감', desc: '언제까지 신청을 받을지 정하세요.' },
     ]);
     wireSubmenu({
       time: () => openStudentSchedule(),
       roster: () => openStudentAssign('roster'),
       assign: () => openStudentAssign('assign'),
       bookings: () => openBookingsList('student'),
+      deadline: () => openDeadlineSetting('student'),
     });
   });
 }
